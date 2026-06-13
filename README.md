@@ -41,9 +41,6 @@ Download any of the datasets from the paper:
 | ImageNet-1k | https://www.image-net.org/download.php |
 | iNaturalist 2021 | https://github.com/visipedia/inat_comp/tree/master/2021 |
 | MS-COCO | https://cocodataset.org/#download |
-| VQAv2 | https://visualqa.org/download.html |
-| ScienceQA | https://huggingface.co/datasets/derek-thomas/ScienceQA |
-| Color | see paper ref. [Wang et al., PACE] |
 
 You only download **images**; the `.h5` files under `./data/` are produced by
 step 1, and checkpoints are not committed (train your own in step 2). Arrange the
