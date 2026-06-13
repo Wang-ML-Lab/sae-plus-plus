@@ -1,0 +1,16 @@
+# Core
+torch>=2.2
+numpy>=1.24
+h5py>=3.8
+tqdm>=4.65
+
+# MLLM backbones (activation extraction, steering captions) + DINOv3 embeddings.
+# Qwen3-VL needs a recent transformers; bump if you hit a model-loading error.
+transformers>=4.57
+Pillow>=10.0
+
+# Generic SAE training harness (depend, don't vendor): dictionary_learning.training.trainSAE
+dictionary_learning @ git+https://github.com/saprmarks/dictionary_learning.git
+
+# Optional: experiment logging (enabled by train_csae.py --use_wandb)
+# wandb>=0.16

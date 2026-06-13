@@ -1,0 +1,27 @@
+CSAE — Cascaded Sparse Autoencoders
+====================================
+
+This project builds on several open-source works. We gratefully acknowledge:
+
+- dictionary_learning (saprmarks et al., MIT License)
+  https://github.com/saprmarks/dictionary_learning
+  Provides the generic SAE training harness (`trainSAE`). Installed as a
+  dependency (see requirements.txt), not vendored.
+
+- The concept insertion/suppression steering protocol follows Pach et al.,
+  "Sparse Autoencoders Learn Monosemantic Features in Vision-Language Models"
+  (2025, arXiv:2504.02821); see `steering/`.
+- The original "Sparse-Autoencoder" educational repository (IParraMartin, MIT
+  License) was the starting point of this codebase.
+
+Model backbones are downloaded from their respective providers and are governed
+by their own licenses, not this one:
+
+- Qwen/Qwen3-VL-4B-Instruct (Qwen team)
+- google/gemma-3-4b-it (Google; Gemma Terms of Use)
+- llava-hf/llava-1.5-13b-hf (LLaVA)
+- facebook/dinov3-vit7b16-pretrain-lvd1689m (Meta; used for HMS reference embeddings)
+
+The CSAE model (`csae/model.py`), the HMS evaluation (`eval_hms.py`), the
+steering code (`steering/`), and the data-generation scripts (`data_gen/`) are
+released under the MIT License (see LICENSE).

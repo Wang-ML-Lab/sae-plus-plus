@@ -1,0 +1,28 @@
+# Data & large artifacts (regenerate via data_gen/, do not commit)
+data/
+*.h5
+!examples/toy_data/*.h5
+*.pt
+*.npy
+*.npz
+# Trained checkpoints are hosted externally (not committed)
+checkpoints/
+
+# Training outputs / logs
+runs/
+wandb/
+results/
+*.log
+nohup.out
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+
+# Caches
+.hf_cache/
+.cache/

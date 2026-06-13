@@ -1,0 +1,32 @@
+# Worked-example hyperparameters: CSAE on Qwen3-VL-4B-Instruct x ImageNet.
+# Reference record of the paper's main-result configuration for this setting.
+# train_csae.py is CLI-driven; scripts/run_worked_example.sh mirrors these values.
+
+backbone:
+  model_name: Qwen                         # bookkeeping tag
+  hf_model: Qwen/Qwen3-VL-4B-Instruct
+  layer_name: model.visual.blocks.23       # vision transformer block 23
+  prompt: "Describe the image content accurately."
+  image_pixels: 65536                       # 256 x 256 (min == max)
+
+csae:
+  dict_size: 20000        # Level-1 dictionary size (d)
+  dict2_rule: half        # Level-2 size = max(256, d // 2) = 10000
+  k1: 6                   # Level-1 BatchTopK target L0
+  k2: 1                   # Level-2 target L0
+  lr: 1.0e-4
+  seed: 0
+
+schedule:
+  num_tokens: 500000000
+  sae_batch_size: 1024    # small batch => more gradient updates (~488k); matters for hierarchy quality
+  warmup_steps: 500
+  decay_start_fraction: 0.8
+  k_anneal_end_fraction: 0.1
+  sae2_start_step: 10000  # let Level-1 stabilize before Level-2 starts
+
+eval:
+  reference_embeddings: DINOv3 (facebook/dinov3-vit7b16-pretrain-lvd1689m)
+  k1_cooccur: 12
+  k2_cooccur: 1
+  min_children_per_parent: 2
