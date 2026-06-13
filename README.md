@@ -130,17 +130,28 @@ Prints `HMS_{min,med,max,mean}` over the discovered Level-2 clusters.
 
 ## 4. Steering
 
-Steer a Level-2 unit with `--cluster <unit#>`. **Run it once without `--cluster`
-to print the list of alive units** (id, #atoms, top concept), then pick one.
-Clamping a unit's atoms inserts its concept into images that lack it and removes
-it from images that have it.
+You can steer with **your own** checkpoint from step 2, or with the **pretrained
+CSAE** (`checkpoints/imagenet_csae/ae.pt`, download from <Drive link>) to skip
+straight to steering. Either way you need the validation activations from step 1
+(`./data/imagenet_val_acts.h5`) and the images (`$VAL_IMAGES`).
+
+First, list the alive Level-2 units (id, #atoms, top concept) and pick one:
+
+```bash
+python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
+  --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" --device "$DEVICE"
+```
+
+Then steer a chosen unit with `--cluster <unit#>`. Clamping a unit's atoms
+inserts its concept into images that lack it and removes it from images that have
+it. (Unit numbers below are for the pretrained checkpoint.)
 
 **Bald eagle — unit #7452:**
 
 ```bash
-python steering/run_demo.py --ckpt-path ./runs/imagenet/*/trainer_0/ae.pt \
+python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
-  --device "$DEVICE" --cluster-cache ./results/clusters.pt --cluster 7452
+  --device "$DEVICE" --cluster 7452
 ```
 
 ```
@@ -152,9 +163,9 @@ SUPPRESS(-3σ)  eagle on branch -> "black and white striped tiles ..."   (eagle 
 **Schooner — unit #7806:**
 
 ```bash
-python steering/run_demo.py --ckpt-path ./runs/imagenet/*/trainer_0/ae.pt \
+python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
-  --device "$DEVICE" --cluster-cache ./results/clusters.pt --cluster 7806
+  --device "$DEVICE" --cluster 7806
 ```
 
 ```
@@ -163,8 +174,7 @@ INSERT  (+3σ)  nematode image  -> "A large, ornate sailing ship with multiple m
 SUPPRESS(-3σ)  tall ship w/ sails -> "a black and white striped object ..."   (ship gone)
 ```
 
-(Unit numbers are specific to your trained checkpoint — use the list printed by
-the no-`--cluster` run.)
+(Pass `--cluster-cache PATH` to cache the cluster scan between runs.)
 
 ## Other backbones
 
