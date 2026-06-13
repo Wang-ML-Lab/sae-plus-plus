@@ -73,13 +73,15 @@ Prints `HMS_{min,med,max,mean}` over the discovered Level-2 clusters.
 
 ## 4. Steering
 
+Steer a Level-2 unit with `--cluster <unit#>` (run without it to list units):
+
 ```bash
 python steering/run_demo.py \
   --ckpt-path ./runs/imagenet/.../ae.pt \
   --data-path ./data/imagenet_qwen_block23.h5 \
   --image-dir /path/to/imagenet/val --device cuda:0 \
   --cluster-cache ./results/clusters.pt \
-  --n-clusters 3 --n-images 3 --alpha 3.0 
+  --cluster 4198 --n-images 3 --alpha 3.0
 ```
 
 ## Other backbones
