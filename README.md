@@ -73,15 +73,36 @@ Prints `HMS_{min,med,max,mean}` over the discovered Level-2 clusters.
 
 ## 4. Steering
 
-Steer a Level-2 unit with `--cluster <unit#>` (run without it to list units):
+Steer a Level-2 unit with `--cluster <unit#>` (run without it to list the alive
+units and pick one). Clamping a unit's atoms inserts its concept into images that
+lack it and removes it from images that have it.
+
+**Bald eagle — unit #7452:**
 
 ```bash
-python steering/run_demo.py \
-  --ckpt-path ./runs/imagenet/.../ae.pt \
-  --data-path ./data/imagenet_qwen_block23.h5 \
-  --image-dir /path/to/imagenet/val --device cuda:0 \
-  --cluster-cache ./results/clusters.pt \
-  --cluster 4198 --n-images 3 --alpha 3.0
+python steering/run_demo.py --ckpt-path ./runs/imagenet/.../ae.pt \
+  --data-path ./data/imagenet_qwen_block23.h5 --image-dir /path/to/imagenet/val \
+  --device cuda:0 --cluster-cache ./results/clusters.pt --cluster 7452
+```
+
+```
+INSERT  (+3σ)  fountain image -> "A majestic white-tailed sea eagle soars above a forest, wings spread wide"
+INSERT  (+3σ)  isopod image   -> "A large, feathered sea eagle perches on a mossy, rocky surface"
+SUPPRESS(-3σ)  eagle on branch -> "black and white striped tiles ..."   (eagle gone)
+```
+
+**Schooner — unit #7806:**
+
+```bash
+python steering/run_demo.py --ckpt-path ./runs/imagenet/.../ae.pt \
+  --data-path ./data/imagenet_qwen_block23.h5 --image-dir /path/to/imagenet/val \
+  --device cuda:0 --cluster-cache ./results/clusters.pt --cluster 7806
+```
+
+```
+INSERT  (+3σ)  alligator image -> "A large, traditional sailing ship with multiple masts and a dark hull"
+INSERT  (+3σ)  nematode image  -> "A large, ornate sailing ship with multiple masts and sails"
+SUPPRESS(-3σ)  tall ship w/ sails -> "a black and white striped object ..."   (ship gone)
 ```
 
 ## Other backbones

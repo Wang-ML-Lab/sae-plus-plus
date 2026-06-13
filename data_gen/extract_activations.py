@@ -44,8 +44,10 @@ def process_sampled_imagenet_to_hdf5(
     print(f"Discovering images in {image_dir}...")
     for cls in sorted(all_subdirs):
         cls_dir = os.path.join(image_dir, cls)
-        # Filter for actual image files
-        valid_images = [f for f in os.listdir(cls_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        # Filter + sort image files. NOTE: must match gen_dino_reference.py's
+        # ordering (sorted class dirs, sorted filenames) so the HMS reference
+        # embeddings line up with these activations image-for-image.
+        valid_images = sorted([f for f in os.listdir(cls_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
         for img_file in valid_images:
             dataset.append({
                 "rel_path": os.path.join(cls, img_file),
