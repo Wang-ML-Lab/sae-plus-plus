@@ -14,12 +14,23 @@ Pipeline: **get images → (1) generate activations & embeddings → (2) train C
 ## Repository layout
 
 ```
-csae/model.py       CSAE: BatchTopKSAE, TwoLevelBatchTopKSAE, TwoLevelBatchTopKTrainer
-train_csae.py       Train CSAE on streamed HDF5 activations
-eval_hms.py         Hierarchical Mono-Semanticity (HMS) evaluation
-steering/           Concept steering (core.py: ClampHook; run_demo.py: caption demo)
-data_gen/           extract_activations.py, gen_dino_reference.py
-configs/, scripts/  worked-example config and end-to-end script
+csae/
+  model.py                     CSAE definition: BatchTopKSAE, TwoLevelBatchTopKSAE, TwoLevelBatchTopKTrainer
+data_gen/
+  extract_activations.py       Run an MLLM over images and dump its vision activations to HDF5
+  gen_dino_reference.py        Compute DINOv3 image embeddings (the reference space used by HMS)
+train_csae.py                  Train the CSAE end-to-end on streamed HDF5 activations
+eval_hms.py                    Hierarchical Mono-Semanticity metric: discover Level-2 clusters and score them
+steering/
+  core.py                      Cluster discovery, per-cluster scale (sigma_A), and the ClampHook intervention
+  run_demo.py                  Steer one Level-2 unit and print baseline vs steered captions
+configs/
+  qwen_imagenet.yaml           Hyperparameters for the Qwen3-VL x ImageNet worked example
+scripts/
+  run_worked_example.sh        End-to-end driver: generate -> train -> eval
+examples/
+  smoke_test.py                Dependency-free sanity check on synthetic data
+  toy_data/                    Tiny inputs for the smoke test
 ```
 
 ## Installation
