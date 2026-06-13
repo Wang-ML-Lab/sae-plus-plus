@@ -61,13 +61,14 @@ def main():
         sae, args.data_path, args.layer_name, device, cache_path=args.cluster_cache)
     paths, classes = discover_images(args.image_dir)
 
-    # No unit chosen -> list units (id, #atoms, top concept) and exit.
+    # Print every alive Level-2 unit (id, #atoms, top concept) so the reader can
+    # choose one to steer. Pick any --cluster from this list.
     if args.cluster not in cluster_dict:
         if args.cluster is not None:
-            print(f"unit {args.cluster} not found. Available units:")
+            print(f"unit {args.cluster} not found. Alive Level-2 units:")
         else:
-            print("Pass a Level-2 unit # via --cluster. Available units:")
-        for l2 in sorted(cluster_dict, key=lambda c: float(img_cluster_acts[c].max()), reverse=True)[:40]:
+            print(f"Alive Level-2 units ({len(cluster_dict)}) — pick one with --cluster:")
+        for l2 in sorted(cluster_dict, key=lambda c: float(img_cluster_acts[c].max()), reverse=True):
             top = np.argsort(img_cluster_acts[l2])[::-1]
             concept = [classes[i] for i in top[:3] if i < len(classes)]
             print(f"  --cluster {l2:<6d} ({len(cluster_dict[l2])} atoms)  {concept}")
