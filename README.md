@@ -1,12 +1,8 @@
 # CSAE: Cascaded Sparse Autoencoders for Multi-Level Visual Concepts in MLLMs
 
 Reference code for **"SAE++: Learning Multi-Level Visual Concepts from Multimodal
-LLMs with Cascaded Sparse Autoencoders."** Complementary to the paper.
+LLMs with Cascaded Sparse Autoencoders."**.
 
-**CSAE** is a two-level cascaded SAE trained end-to-end: Level-1 decomposes an
-MLLM activation into atomic concepts (its decoder columns are the concept
-directions), and Level-2 is trained **on the Level-1 decoder atoms themselves**,
-learning "concepts of concepts."
 
 ## Repository layout
 
@@ -17,14 +13,12 @@ eval_hms.py         Hierarchical Mono-Semanticity (HMS) evaluation
 steering/           Concept steering (core.py: ClampHook; run_demo.py: caption demo)
 data_gen/           extract_activations.py, gen_dino_reference.py
 configs/, scripts/  worked-example config and end-to-end script
-examples/           smoke test + toy data
 ```
 
 ## Installation
 
 ```bash
 pip install -r requirements.txt      # or: conda env create -f environment.yml
-python examples/smoke_test.py        # dependency-free check (synthetic data)
 ```
 
 `dictionary_learning.training.trainSAE` is a pip dependency (not vendored); MLLM
@@ -79,21 +73,14 @@ Prints `HMS_{min,med,max,mean}` over the discovered Level-2 clusters.
 
 ## 4. Steering
 
-Following [Pach et al. 2025](https://arxiv.org/abs/2504.02821), `ClampHook`
-clamps a cluster's Level-1 atom codes to `±alpha·sigma_A` at the vision layer
-(`+` inserts a concept, `−` suppresses it). `run_demo.py` prints baseline vs
-steered captions (no LLM judge):
-
 ```bash
 python steering/run_demo.py \
   --ckpt-path ./runs/imagenet/.../ae.pt \
   --data-path ./data/imagenet_qwen_block23.h5 \
   --image-dir /path/to/imagenet/val --device cuda:0 \
   --cluster-cache ./results/clusters.pt \
-  --n-clusters 3 --n-images 3 --alpha 3.0 --min-size 2 --max-size 8
+  --n-clusters 3 --n-images 3 --alpha 3.0 
 ```
-
-Steer small clusters (`--min-size/--max-size`); large ones mix many concepts.
 
 ## Other backbones
 
