@@ -3,45 +3,27 @@
 Reference code for **"SAE++: Learning Multi-Level Visual Concepts from Multimodal
 LLMs with Cascaded Sparse Autoencoders."**
 
-**CSAE** is a two-level cascaded SAE trained end-to-end: Level-1 decomposes an
-MLLM activation into atomic concepts (its decoder columns are the concept
-directions), and Level-2 is trained **on the Level-1 decoder atoms themselves**,
-learning "concepts of concepts."
+## Layout
 
-Pipeline: **get images → (1) generate activations & embeddings → (2) train CSAE →
-(3) evaluate HMS → (4) steer concepts.** A CUDA GPU is required.
+  csae/
+    model.py                     CSAE definition
+  data_gen/
+    extract_activations.py       Run an MLLM over images and dump its vision activations to HDF5
+    gen_dino_reference.py        Compute DINOv3 image embeddings
+  train_csae.py                  Train the CSAE end-to-end on MLLM activations
+  eval_hms.py                    Calculate Hierarchical Mono-Semanticity Score with trained CSAE
+  steering/
+    core.py                      Cluster discovery, calculate per-cluster scale (sigma_A), and intervention
+    run_demo.py                  Steer one Level-2 unit and print baseline vs steered captions 
+  configs/
+    qwen_imagenet.yaml           Hyperparameters for the Qwen3-VL x ImageNet worked example
 
-## Repository layout
-
-```
-csae/
-  model.py                     CSAE definition: BatchTopKSAE, TwoLevelBatchTopKSAE, TwoLevelBatchTopKTrainer
-data_gen/
-  extract_activations.py       Run an MLLM over images and dump its vision activations to HDF5
-  gen_dino_reference.py        Compute DINOv3 image embeddings (the reference space used by HMS)
-train_csae.py                  Train the CSAE end-to-end on streamed HDF5 activations
-eval_hms.py                    Hierarchical Mono-Semanticity metric: discover Level-2 clusters and score them
-steering/
-  core.py                      Cluster discovery, per-cluster scale (sigma_A), and the ClampHook intervention
-  run_demo.py                  Steer one Level-2 unit and print baseline vs steered captions
-configs/
-  qwen_imagenet.yaml           Hyperparameters for the Qwen3-VL x ImageNet worked example
-scripts/
-  run_worked_example.sh        End-to-end driver: generate -> train -> eval
-examples/
-  smoke_test.py                Dependency-free sanity check on synthetic data
-  toy_data/                    Tiny inputs for the smoke test
-```
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt      # or: conda env create -f environment.yml
+pip install -r requirements.txt    
 ```
-
-`dictionary_learning.training.trainSAE` is a pip dependency (not vendored). MLLM
-backbones (Qwen3-VL) and the DINOv3 encoder download from the Hugging Face Hub on
-first use under their own licenses (see `NOTICE`).
 
 ## Datasets
 
@@ -52,20 +34,20 @@ Download any of the datasets from the paper:
 | ImageNet-1k | https://www.image-net.org/download.php |
 | iNaturalist 2021 | https://github.com/visipedia/inat_comp/tree/master/2021 |
 | MS-COCO | https://cocodataset.org/#download |
+| Color | https://github.com/Wang-ML-Lab/interpretable-foundation-models |
 
-You only download **images**; the `.h5` files under `./data/` are produced by
-step 1, and checkpoints are not committed (train your own in step 2). Arrange the
-images as **one subdirectory per class**:
 
+Only download **images**; the `.h5` files under `./data/` are produced by
+step data generation scripts. 
+
+Arrange the images as **one subdirectory per class**:
 ```
 <image-dir>/
   class_a/  img001.jpg  img002.jpg  ...
   class_b/  img001.jpg  ...
 ```
 
-Following the paper (§5.1), the SAE is **trained on the training split** (e.g. for
-ImageNet, ~50 images/class sampled from the train set) and **HMS is evaluated on
-the validation split**. Set both and create the output dirs:
+Set both and create the output dirs:
 
 ```bash
 export TRAIN_IMAGES=/path/to/imagenet/train_sample   # images to train the SAE on
@@ -74,12 +56,11 @@ export DEVICE=cuda:0
 mkdir -p data runs results
 ```
 
-## 1. Generate activations & embeddings
+## Step 1. Generate activations & embeddings
 
 Extract MLLM vision activations (group `X`, one dataset per layer, plus
 `token_offsets`) for the **training** images, and — for evaluation — activations
-plus DINOv3 reference embeddings for the **validation** images. The two
-validation files share the same image order, so they stay aligned for HMS.
+plus DINOv3 reference embeddings for the **validation** images.
 
 ```bash
 # training-split activations (used by step 2)
@@ -96,7 +77,7 @@ python data_gen/gen_dino_reference.py \
   --image-dir "$VAL_IMAGES" --out ./data/imagenet_val_dino.h5 --device "$DEVICE"
 ```
 
-## 2. Train
+## Step 2. Train CSAE
 
 ```bash
 python train_csae.py \
@@ -114,9 +95,8 @@ The checkpoint lands at `./runs/imagenet/<submodule>/trainer_0/ae.pt`.
 `--sae2_start_step` lets Level-1 stabilize before Level-2 starts; see
 `configs/qwen_imagenet.yaml`.
 
-## 3. Evaluate (HMS)
+## 3. Evaluate HMS
 
-Run on the **validation** activations + embeddings:
 
 ```bash
 python eval_hms.py \
@@ -126,55 +106,39 @@ python eval_hms.py \
   --layer-name model.visual.blocks.23 --device "$DEVICE"
 ```
 
-Prints `HMS_{min,med,max,mean}` over the discovered Level-2 clusters.
 
-## 4. Steering
+ ## 4. Steering
 
-You can steer with **your own** checkpoint from step 2, or with the **pretrained
-CSAE** (`checkpoints/imagenet_csae/ae.pt`, download from <Drive link>) to skip
-straight to steering. Either way you need the validation activations from step 1
-(`./data/imagenet_val_acts.h5`) and the images (`$VAL_IMAGES`).
+A **pretrained checkpoint is available** (Qwen3-VL-4B × ImageNet, d20000/k6).
+Download it (`ae.pt` + `config.json`) and point `--ckpt-path` at it:
 
-First, list the alive Level-2 units (id, #atoms, top concept) and pick one:
+
+`--data-path` is the activations from step 1, `--image-dir` is the images.
+
+**List the alive Level-2 units** (id, #atoms, top concept) and pick one:
 
 ```bash
-python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
-  --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" --device "$DEVICE"
+python steering/run_demo.py --ckpt-path "$CKPT" \
+--data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" --device "$DEVICE"
 ```
-
-Then steer a chosen unit with `--cluster <unit#>`. Clamping a unit's atoms
-inserts its concept into images that lack it and removes it from images that have
-it. (Unit numbers below are for the pretrained checkpoint.)
 
 **Bald eagle — unit #7452:**
 
 ```bash
-python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
-  --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
-  --device "$DEVICE" --cluster 7452
-```
-
-```
-INSERT  (+3σ)  fountain image -> "A majestic white-tailed sea eagle soars above a forest, wings spread wide"
-INSERT  (+3σ)  isopod image   -> "A large, feathered sea eagle perches on a mossy, rocky surface"
-SUPPRESS(-3σ)  eagle on branch -> "black and white striped tiles ..."   (eagle gone)
+ python steering/run_demo.py --ckpt-path "$CKPT" \
+--data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
+--device "$DEVICE" --cluster 7452
 ```
 
 **Schooner — unit #7806:**
 
 ```bash
-python steering/run_demo.py --ckpt-path checkpoints/imagenet_csae/ae.pt \
+  python steering/run_demo.py --ckpt-path "$CKPT" \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
   --device "$DEVICE" --cluster 7806
 ```
 
-```
-INSERT  (+3σ)  alligator image -> "A large, traditional sailing ship with multiple masts and a dark hull"
-INSERT  (+3σ)  nematode image  -> "A large, ornate sailing ship with multiple masts and sails"
-SUPPRESS(-3σ)  tall ship w/ sails -> "a black and white striped object ..."   (ship gone)
-```
 
-(Pass `--cluster-cache PATH` to cache the cluster scan between runs.)
 
 ## Other backbones
 
