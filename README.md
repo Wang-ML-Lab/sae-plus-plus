@@ -155,9 +155,9 @@ path in `extract_activations.py`. `<L>` is the layer index (`--layers`):
 
 | Backbone | HF model | hook path (`--layer_name`) |
 |----------|----------|----------------------------|
-| Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.<L>` (we use `L=23`) |
-| Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.<L>` (we use `L=26`) |
-| LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | `model.layers.<L>` (language-model layer; we use `L=39`) |
+| Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.<L>` (<L> is the number of layer) |
+| Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.<L>` |
+| LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | `model.layers.<L>` |
 
 ## Project Structure
 
