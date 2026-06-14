@@ -5,18 +5,23 @@ LLMs with Cascaded Sparse Autoencoders."**
 
 ## File Structure
 
-  csae/
-    model.py                     CSAE definition
-  data_gen/
-    extract_activations.py       Run an MLLM over images and dump its vision activations to HDF5
-    gen_dino_reference.py        Compute DINOv3 image embeddings
-  train_csae.py                  Train the CSAE end-to-end on MLLM activations
-  eval_hms.py                    Calculate Hierarchical Mono-Semanticity Score with trained CSAE
-  steering/
-    core.py                      Cluster discovery, calculate per-cluster scale (sigma_A), and intervention
-    run_demo.py                  Steer one Level-2 unit and print baseline vs steered captions 
-  configs/
-    qwen_imagenet.yaml           Hyperparameters for the Qwen3-VL x ImageNet worked example
+- `csae/`
+  - `model.py` — CSAE definition
+
+- `data_gen/`
+  - `extract_activations.py` — Run an MLLM over images and dump its vision activations to HDF5
+  - `gen_dino_reference.py` — Compute DINOv3 image embeddings
+
+- `train_csae.py` — Train the CSAE end-to-end on MLLM activations
+  
+- `eval_hms.py` — Calculate Hierarchical Mono-Semanticity Score with trained CSAE
+  
+- `steering/`
+  - `core.py` — Cluster discovery, calculate per-cluster scale (`sigma_A`), and intervention
+  - `run_demo.py` — Steer one Level-2 unit and print baseline vs. steered captions
+
+- `configs/`
+  - `qwen_imagenet.yaml` — Hyperparameters for the Qwen3-VL × ImageNet worked example
 
 
 ## Installation
