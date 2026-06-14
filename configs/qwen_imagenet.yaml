@@ -1,6 +1,6 @@
 # Worked-example hyperparameters: CSAE on Qwen3-VL-4B-Instruct x ImageNet.
 # Reference record of the paper's main-result configuration for this setting.
-# train_csae.py is CLI-driven; scripts/run_worked_example.sh mirrors these values.
+# train_csae.py is CLI-driven; these are the worked-example values to pass.
 
 backbone:
   model_name: Qwen                         # bookkeeping tag
