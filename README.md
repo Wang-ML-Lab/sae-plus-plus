@@ -4,8 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![🤗 Checkpoint](https://img.shields.io/badge/🤗%20Hugging%20Face-Checkpoint-blue)](https://huggingface.co/YusongZhao666/csae-ckpt)
 
-Reference code for **"SAE++: Learning Multi-Level Visual Concepts from Multimodal
-LLMs with Cascaded Sparse Autoencoders."**
+This is the official implementation of the paper:
+
+**SAE++: Learning Multi-Level Visual Concepts from Multimodal LLMs with Cascaded Sparse Autoencoders**
+
+Yusong Zhao, Hengyi Wang, Tanuja Ganu, Akshay Nambi, Hao Wang
 
 ## Overview
 
@@ -184,14 +187,6 @@ CSAE/
   year    = {2026},
 }
 ```
-
-## Authors
-
-- Yusong Zhao, Rutgers University — `yusong.zhao@rutgers.edu`
-- Hengyi Wang, Rutgers University — `hengyi.wang@rutgers.edu`
-- Tanuja Ganu, Microsoft Research — `tanuja.ganu@microsoft.com`
-- Akshay Nambi, Microsoft Research — `akshayn@microsoft.com`
-- Hao Wang, Rutgers University — `hw488@cs.rutgers.edu`
 
 ## License
 
