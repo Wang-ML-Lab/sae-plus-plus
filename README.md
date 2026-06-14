@@ -109,11 +109,8 @@ python eval_hms.py \
 
  ## 4. Steering
 
-A **pretrained checkpoint is available** (Qwen3-VL-4B × ImageNet, d20000/k6).
-Download it (`ae.pt` + `config.json`) and point `--ckpt-path` at it:
-
-
-`--data-path` is the activations from step 1, `--image-dir` is the images.
+A **pretrained checkpoint is available** at  
+<https://huggingface.co/YusongZhao666/csae-ckpt/tree/main>
 
 **List the alive Level-2 units** (id, #atoms, top concept) and pick one:
 
