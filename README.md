@@ -3,7 +3,7 @@
 Reference code for **"SAE++: Learning Multi-Level Visual Concepts from Multimodal
 LLMs with Cascaded Sparse Autoencoders."**
 
-## Layout
+## File Structure
 
   csae/
     model.py                     CSAE definition
