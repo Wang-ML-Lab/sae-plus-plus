@@ -42,8 +42,8 @@ Obtain any of the datasets from the paper:
 | Color | https://github.com/Wang-ML-Lab/interpretable-foundation-models |
 
 
-Only download **images**; the `.h5` files under `./data/` are produced by
-step data generation scripts. 
+Only obtain the **images**; the `.h5` files under `./data/` are produced by the
+data-generation scripts in Step 1.
 
 Arrange the images as **one subdirectory per class**:
 ```
@@ -155,6 +155,14 @@ Point `data_gen/extract_activations.py` at another model/layer and retrain:
 | Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.23` |
 | Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.26` |
 | LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | language-model backbone layer 39 |
+
+## Authors
+
+- Yusong Zhao, Rutgers University — `yusong.zhao@rutgers.edu`
+- Hengyi Wang, Rutgers University — `hengyi.wang@rutgers.edu`
+- Tanuja Ganu, Microsoft Research — `tanuja.ganu@microsoft.com`
+- Akshay Nambi, Microsoft Research — `akshayn@microsoft.com`
+- Hao Wang, Rutgers University — `hw488@cs.rutgers.edu`
 
 ## License
 
