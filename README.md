@@ -100,8 +100,7 @@ The checkpoint lands at `./runs/imagenet/<submodule>/trainer_0/ae.pt`.
 `--sae2_start_step` lets Level-1 stabilize before Level-2 starts; see
 `configs/qwen_imagenet.yaml`.
 
-## 3. Evaluate HMS
-
+## Step 3. Evaluate HMS
 
 ```bash
 python eval_hms.py \
@@ -112,30 +111,35 @@ python eval_hms.py \
 ```
 
 
- ## 4. Steering
+## Step 4. Steering
 
-A **pretrained checkpoint is available** at  
-<https://huggingface.co/YusongZhao666/csae-ckpt/tree/main>
+A **pretrained checkpoint is available** at
+<https://huggingface.co/YusongZhao666/csae-ckpt/tree/main>. Download `ae.pt`
+(with its `config.json`) and point `CKPT` at it:
+
+```bash
+export CKPT=/path/to/ae.pt
+```
 
 **List the alive Level-2 units** (id, #atoms, top concept) and pick one:
 
 ```bash
 python steering/run_demo.py --ckpt-path "$CKPT" \
---data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" --device "$DEVICE"
+  --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" --device "$DEVICE"
 ```
 
 **Bald eagle — unit #7452:**
 
 ```bash
- python steering/run_demo.py --ckpt-path "$CKPT" \
---data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
---device "$DEVICE" --cluster 7452
+python steering/run_demo.py --ckpt-path "$CKPT" \
+  --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
+  --device "$DEVICE" --cluster 7452
 ```
 
 **Schooner — unit #7806:**
 
 ```bash
-  python steering/run_demo.py --ckpt-path "$CKPT" \
+python steering/run_demo.py --ckpt-path "$CKPT" \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
   --device "$DEVICE" --cluster 7806
 ```

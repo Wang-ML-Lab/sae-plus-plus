@@ -10,15 +10,16 @@ which handles activation normalization, checkpointing (`ae.pt` + `config.json`),
 and optional Weights & Biases logging. The trained checkpoint is consumed by
 `eval_hms.py`.
 
-Example (Qwen3-VL-4B x ImageNet, paper default d=20000, k1=20, k2=10):
+Example (Qwen3-VL-4B x ImageNet):
 
     python train_csae.py \
-        --save_dir ./runs/qwen_imagenet \
+        --save_dir ./runs/imagenet \
         --model_name Qwen --dataset_name ImageNet \
-        --data_path ./data/imagenet_qwen_block23.h5 \
-        --layer_name model.visual.blocks.23 \
-        --device cuda:0 --dict_size 20000 --k1 20 --k2 10 \
-        --num_tokens 500000000
+        --data_path ./data/imagenet_train_acts.h5 \
+        --layer_name model.visual.blocks.23 --device cuda:0 \
+        --dict_size 20000 --k1 6 --k2 1 \
+        --lr 1e-4 --seed 0 --num_tokens 500000000 \
+        --sae_batch_size 1024 --warmup_steps 500 --sae2_start_step 10000
 """
 
 import os
