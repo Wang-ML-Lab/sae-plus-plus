@@ -148,13 +148,16 @@ python steering/run_demo.py --ckpt-path "$CKPT" \
 
 ## Supported Backbones
 
-Point `data_gen/extract_activations.py` at another model/layer and retrain:
+The released `data_gen/extract_activations.py` targets **Qwen3-VL** (it loads
+`Qwen3VLForConditionalGeneration` and hooks `model.visual.blocks.{i}`). The paper
+also reports Gemma-3 and LLaVA-1.5; to use those, swap the model class and hook
+path in `extract_activations.py`. `<L>` is the layer index (`--layers`):
 
-| Backbone | HF model | `--layer_name` |
-|----------|----------|----------------|
-| Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.23` |
-| Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.26` |
-| LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | language-model backbone layer 39 |
+| Backbone | HF model | hook path (`--layer_name`) |
+|----------|----------|----------------------------|
+| Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.<L>` (we use `L=23`) |
+| Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.<L>` (we use `L=26`) |
+| LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | `model.layers.<L>` (language-model layer; we use `L=39`) |
 
 ## Project Structure
 
