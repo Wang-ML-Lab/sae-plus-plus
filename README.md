@@ -32,9 +32,9 @@ pip install -r requirements.txt
 
 ## Datasets
 
-Download any of the datasets from the paper:
+Obtain any of the datasets from the paper:
 
-| Dataset | Download |
+| Dataset | Source |
 |---------|----------|
 | ImageNet-1k | https://www.image-net.org/download.php |
 | iNaturalist 2021 | https://github.com/visipedia/inat_comp/tree/master/2021 |
