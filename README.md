@@ -1,58 +1,58 @@
 # CSAE: Cascaded Sparse Autoencoders for Multi-Level Visual Concepts in MLLMs
 
+[![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![🤗 Checkpoint](https://img.shields.io/badge/🤗%20Hugging%20Face-Checkpoint-blue)](https://huggingface.co/YusongZhao666/csae-ckpt)
+
 Reference code for **"SAE++: Learning Multi-Level Visual Concepts from Multimodal
 LLMs with Cascaded Sparse Autoencoders."**
 
-## File Structure
+## Overview
 
-- `csae/`
-  - `model.py` — CSAE definition
+**CSAE** (Cascaded Sparse Autoencoder) discovers *multi-level* visual concepts in
+multimodal LLMs. A Level-1 SAE decomposes the MLLM's vision activations into
+atomic concepts — its decoder columns are the concept directions — and a Level-2
+SAE is trained **on the Level-1 decoder atoms themselves**, learning higher-order
+"concepts of concepts."
 
-- `data_gen/`
-  - `extract_activations.py` — Run an MLLM over images and dump its vision activations to HDF5
-  - `gen_dino_reference.py` — Compute DINOv3 image embeddings
+- **Hierarchical** — Level-2 units group semantically coherent Level-1 atoms.
+- **End-to-end** — both levels are trained jointly.
+- **Steerable** — clamping a Level-2 unit causally inserts or suppresses its concept in the MLLM.
 
-- `train_csae.py` — Train the CSAE end-to-end on MLLM activations
-  
-- `eval_hms.py` — Calculate Hierarchical Mono-Semanticity Score with trained CSAE
-  
-- `steering/`
-  - `core.py` — Cluster discovery, calculate per-cluster scale (`sigma_A`), and intervention
-  - `run_demo.py` — Steer one Level-2 unit and print baseline vs. steered captions
-
-- `configs/`
-  - `qwen_imagenet.yaml` — Hyperparameters for the Qwen3-VL × ImageNet worked example
-
+Pipeline: get images → (1) generate activations → (2) train CSAE →
+(3) evaluate HMS → (4) steer concepts. A CUDA GPU is required.
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt    
+pip install -r requirements.txt      # or: conda env create -f environment.yml
 ```
+
+`dictionary_learning.training.trainSAE` is a pip dependency (not vendored). MLLM
+backbones (Qwen3-VL) and the DINOv3 encoder download from the Hugging Face Hub on
+first use under their own licenses (see `NOTICE`).
 
 ## Datasets
 
 Obtain any of the datasets from the paper:
 
 | Dataset | Source |
-|---------|----------|
+|---------|--------|
 | ImageNet-1k | https://www.image-net.org/download.php |
 | iNaturalist 2021 | https://github.com/visipedia/inat_comp/tree/master/2021 |
 | MS-COCO | https://cocodataset.org/#download |
 | Color | https://github.com/Wang-ML-Lab/interpretable-foundation-models |
 
-
 Only obtain the **images**; the `.h5` files under `./data/` are produced by the
-data-generation scripts in Step 1.
+data-generation scripts in Step 1. Arrange the images as **one subdirectory per class**:
 
-Arrange the images as **one subdirectory per class**:
 ```
 <image-dir>/
   class_a/  img001.jpg  img002.jpg  ...
   class_b/  img001.jpg  ...
 ```
 
-Set both and create the output dirs:
+Set the splits and create the output dirs:
 
 ```bash
 export TRAIN_IMAGES=/path/to/imagenet/train_sample   # images to train the SAE on
@@ -110,7 +110,6 @@ python eval_hms.py \
   --layer-name model.visual.blocks.23 --device "$DEVICE"
 ```
 
-
 ## Step 4. Steering
 
 A **pretrained checkpoint is available** at
@@ -144,9 +143,7 @@ python steering/run_demo.py --ckpt-path "$CKPT" \
   --device "$DEVICE" --cluster 7806
 ```
 
-
-
-## Other backbones
+## Supported Backbones
 
 Point `data_gen/extract_activations.py` at another model/layer and retrain:
 
@@ -155,6 +152,38 @@ Point `data_gen/extract_activations.py` at another model/layer and retrain:
 | Qwen3-VL-4B | `Qwen/Qwen3-VL-4B-Instruct` | `model.visual.blocks.23` |
 | Gemma-3-4B-IT | `google/gemma-3-4b-it` | `model.vision_tower.vision_model.encoder.layers.26` |
 | LLaVA-1.5-13B | `llava-hf/llava-1.5-13b-hf` | language-model backbone layer 39 |
+
+## Project Structure
+
+```
+CSAE/
+├── csae/
+│   └── model.py                  # CSAE: BatchTopKSAE, TwoLevelBatchTopKSAE, TwoLevelBatchTopKTrainer
+├── data_gen/
+│   ├── extract_activations.py    # MLLM vision activations -> HDF5
+│   └── gen_dino_reference.py     # DINOv3 image embeddings (HMS reference space)
+├── train_csae.py                 # Train the CSAE end-to-end on streamed HDF5 activations
+├── eval_hms.py                   # Hierarchical Mono-Semanticity (HMS) evaluation
+├── steering/
+│   ├── core.py                   # cluster discovery, per-cluster scale (sigma_A), ClampHook
+│   └── run_demo.py               # steer one Level-2 unit; print baseline vs steered captions
+├── configs/
+│   └── qwen_imagenet.yaml        # worked-example hyperparameters
+├── requirements.txt
+├── environment.yml
+├── LICENSE
+└── NOTICE
+```
+
+## Citation
+
+```bibtex
+@inproceedings{zhao2026csae,
+  title   = {SAE++: Learning Multi-Level Visual Concepts from Multimodal LLMs with Cascaded Sparse Autoencoders},
+  author  = {Zhao, Yusong and Wang, Hengyi and Ganu, Tanuja and Nambi, Akshay and Wang, Hao},
+  year    = {2026},
+}
+```
 
 ## Authors
 
