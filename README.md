@@ -184,10 +184,13 @@ CSAE/
 ## Citation
 
 ```bibtex
-@inproceedings{zhao2026csae,
-  title   = {SAE++: Learning Multi-Level Visual Concepts from Multimodal LLMs with Cascaded Sparse Autoencoders},
-  author  = {Zhao, Yusong and Wang, Hengyi and Ganu, Tanuja and Nambi, Akshay and Wang, Hao},
-  year    = {2026},
+@misc{zhao2026csae,
+  title         = {SAE++: Learning Multi-Level Visual Concepts from Multimodal LLMs with Cascaded Sparse Autoencoders},
+  author        = {Zhao, Yusong and Wang, Hengyi and Ganu, Tanuja and Nambi, Akshay and Wang, Hao},
+  year          = {2026},
+  eprint        = {XXXX.XXXXX},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
 }
 ```
 
