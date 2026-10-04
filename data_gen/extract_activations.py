@@ -4,7 +4,6 @@ import torch
 import h5py
 import json
 import numpy as np
-import sys
 from PIL import Image
 from tqdm import tqdm
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
@@ -26,6 +25,7 @@ def _make_collection_hook(store, key):
 def process_sampled_imagenet_to_hdf5(
     image_dir,
     model,
+    model_path,
     seed,
     layers,
     gen_new_tokens,
@@ -73,7 +73,7 @@ def process_sampled_imagenet_to_hdf5(
     min_pixels = 256 * 256
     max_pixels = 256 * 256
     processor = AutoProcessor.from_pretrained(
-        "Qwen/Qwen3-VL-4B-Instruct",
+        model_path,
         min_pixels=min_pixels,
         max_pixels=max_pixels,
     )
@@ -159,6 +159,9 @@ def process_sampled_imagenet_to_hdf5(
             all_class_labels.append(entry["class_name"])
             total_n += 1
 
+        if h5_file is None:
+            raise RuntimeError(f"No readable images found under {image_dir}")
+
         # Add final offset for the last image boundary
         token_offsets.append(total_tokens)
         h5_file.create_dataset("token_offsets", data=np.asarray(token_offsets, dtype=np.int64))
@@ -204,6 +207,7 @@ if __name__ == "__main__":
     process_sampled_imagenet_to_hdf5(
         image_dir=cfg.image_dir,
         model=model,
+        model_path=cfg.model_path,
         seed=cfg.seed,
         layers=layers,
         gen_new_tokens=cfg.gen_new_tokens,

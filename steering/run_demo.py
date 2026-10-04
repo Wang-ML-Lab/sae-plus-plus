@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CSAE concept steering — qualitative demo (no LLM judge).
+SAE++ concept steering — qualitative demo (no LLM judge).
 
 Pick a Level-2 unit with --cluster and steer it: SUPPRESS (clamp its Level-1
 atoms to -alpha*sigma_A) on images where the concept is present, and INSERT

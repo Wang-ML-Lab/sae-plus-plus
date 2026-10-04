@@ -1,5 +1,5 @@
 """
-CSAE: Cascaded Sparse Autoencoder (canonical two-level model).
+SAE++: Cascaded Sparse Autoencoder (canonical two-level model).
 
 This is the model used for the paper's main results and for the steering /
 HMS experiments. It is fully self-contained (the small decoder-normalization /
@@ -166,7 +166,7 @@ class BatchTopKSAE(nn.Module):
 
 
 # --------------------------------------------------------------------------------------
-# Two-level cascaded SAE (CSAE)
+# Two-level cascaded SAE (SAE++)
 # --------------------------------------------------------------------------------------
 
 class TwoLevelBatchTopKSAE(nn.Module):
@@ -191,8 +191,10 @@ class TwoLevelBatchTopKSAE(nn.Module):
         self.register_buffer("live_n2", t.tensor(0, dtype=t.int))
 
     def scale_biases(self, scale: float):
+        # Only Level-1 sees activation scale. Level-2's inputs are the unit-norm
+        # Level-1 decoder atoms, which are scale-invariant, so its biases must not
+        # be rescaled (trainSAE calls this with the activation norm factor at save).
         self.sae1.scale_biases(scale)
-        self.sae2.scale_biases(scale)
 
     @t.no_grad()
     def set_live1(self, active_F: t.Tensor):
@@ -223,7 +225,7 @@ class TwoLevelBatchTopKSAE(nn.Module):
 # --------------------------------------------------------------------------------------
 
 class TwoLevelBatchTopKTrainer(SAETrainer):
-    """Joint end-to-end trainer for the two-level CSAE."""
+    """Joint end-to-end trainer for the two-level SAE++."""
 
     def __init__(
         self,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Core CSAE steering primitives (Pach et al. 2025 protocol): cluster discovery,
+Core SAE++ steering primitives (Pach et al. 2025 protocol): cluster discovery,
 per-cluster scale (sigma_A), and the ClampHook intervention.
 """
 import os
@@ -69,11 +69,7 @@ def discover_clusters(sae, data_path, layer_name, device, topk_l1=20, act_thr=1e
             x = torch.tensor(ds[start:start + 4096], device=device, dtype=torch.float32)
             post = F.relu(sae1.encoder(x - sae1.b_dec))
             vals, idxs = post.topk(topk_l1, dim=-1)
-            mask = vals > act_thr
-            for b in range(x.size(0)):
-                active = idxs[b][mask[b]]
-                if active.numel() > 0:
-                    freq1.index_add_(0, active, torch.ones_like(active, dtype=torch.float32))
+            freq1 += torch.bincount(idxs[vals > act_thr], minlength=H1)
 
     alive_idx1 = (freq1 > 0).nonzero(as_tuple=False).flatten()
     atoms = sae1.decoder.weight[:, alive_idx1].T

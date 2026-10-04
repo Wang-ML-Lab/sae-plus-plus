@@ -1,8 +1,18 @@
 """
-SAE++ evaluation using the EXACT notebook protocol.
-Directly adapted from user's notebook cells.
+Hierarchical Mono-Semanticity (HMS) evaluation for a trained SAE++ checkpoint.
+
+Each alive Level-1 atom gets a semantic prototype: the activation-weighted mean of
+reference image embeddings (DINOv3, from data_gen/gen_dino_reference.py). Each
+Level-1 atom is assigned to its argmax Level-2 parent, and a parent's HMS is the
+mean pairwise cosine similarity of its children's prototypes (paper App. E.5).
+The activation and embedding files must list the same images in the same order.
+
+Example:
+    python eval_hms.py --ckpt-path ./runs/imagenet/*/trainer_0/ae.pt \
+        --data-path ./data/imagenet_val_acts.h5 \
+        --embedding-path ./data/imagenet_val_dino.h5 --device cuda:0
 """
-import os, sys, json, h5py, torch, argparse
+import os, json, h5py, torch, argparse
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
@@ -10,22 +20,8 @@ from tqdm import tqdm
 from csae.model import TwoLevelBatchTopKSAE
 
 # ============================================================
-# Args
+# Evaluation constants
 # ============================================================
-parser = argparse.ArgumentParser()
-parser.add_argument("--device", default="cuda:0")
-parser.add_argument("--ckpt-path", required=True)
-parser.add_argument("--data-path", required=True)
-parser.add_argument("--embedding-path", required=True)
-parser.add_argument("--layer-name", default="model.visual.blocks.23")
-parser.add_argument("--method", default="SAE++")
-args = parser.parse_args()
-
-DEVICE = args.device
-CKPT_PATH = args.ckpt_path
-DATA_PATH = args.data_path
-LAYER_NAME = args.layer_name
-
 DATA_SCALE = 1.0
 ACT_THR_L1 = 1e-3
 ACT_THR_L2 = 1e-3
@@ -34,34 +30,9 @@ TOPK_L2_FOR_ALIVE = 1
 BATCH_IMAGES_FOR_ALIVE = 128
 CHUNK_TOKENS_FOR_ALIVE = 8192
 SCAN_BATCH_IMAGES = 16
-TOP_K_IMAGES = 10
 
 # ============================================================
-# TopKTracker (exact copy from notebook)
-# ============================================================
-class TopKTracker:
-    def __init__(self, top_k, n_units, device):
-        self.top_k = int(top_k)
-        self.n_units = int(n_units)
-        self.device = device
-        self.scores = torch.full((n_units, self.top_k), -float("inf"), device=device)
-        self.img_ids = torch.full((n_units, self.top_k), -1, dtype=torch.long, device=device)
-
-    @torch.no_grad()
-    def update(self, batch_scores, batch_start_img):
-        B, U = batch_scores.shape
-        assert U == self.n_units
-        img_ids = torch.arange(batch_start_img, batch_start_img + B, device=self.device, dtype=torch.long)
-        cand_scores = batch_scores.transpose(0, 1).contiguous()
-        cand_imgids = img_ids.view(1, -1).expand(U, -1).contiguous()
-        all_scores = torch.cat([self.scores, cand_scores], dim=1)
-        all_imgids = torch.cat([self.img_ids, cand_imgids], dim=1)
-        topv, topi = torch.topk(all_scores, k=self.top_k, dim=1, largest=True, sorted=True)
-        self.scores = topv
-        self.img_ids = torch.gather(all_imgids, 1, topi)
-
-# ============================================================
-# Load model (exact copy from notebook)
+# Load model
 # ============================================================
 def load_trained_twolevel_batchtopk(ckpt_path, device="cpu"):
     run_dir = os.path.dirname(ckpt_path)
@@ -83,7 +54,7 @@ def load_trained_twolevel_batchtopk(ckpt_path, device="cpu"):
     return model.to(device).eval(), trainer_cfg, meta, (k1, k2)
 
 # ============================================================
-# Alive inference (exact copy from notebook)
+# Alive inference
 # ============================================================
 @torch.no_grad()
 def _post_relu(sae, x):
@@ -143,7 +114,7 @@ def infer_alive_indices_from_dataset(data_path, layer_name, model, device,
     return alive_idx1, alive_idx2
 
 # ============================================================
-# L1→L2 mapping (exact copy from notebook)
+# L1→L2 mapping
 # ============================================================
 @torch.no_grad()
 def compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device):
@@ -157,16 +128,14 @@ def compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device):
     return post2[:, alive_idx2].contiguous()
 
 # ============================================================
-# Scan + collect (exact copy from notebook)
+# Scan + collect
 # ============================================================
 @torch.no_grad()
-def scan_dataset_and_track_and_collect(data_path, layer_name, model,
-    alive_idx1, alive_idx2, tracker1, tracker2, mapping_matrix,
+def collect_image_activations(data_path, layer_name, model, alive_idx1,
     batch_images=256, device="cuda", data_scale=1.0, collect_dtype=torch.float16):
+    """Mean-pool alive Level-1 codes over each image's tokens -> [N_images, L1]."""
     model = model.to(device).eval()
     alive_idx1 = alive_idx1.to(device=device, dtype=torch.long)
-    alive_idx2 = alive_idx2.to(device=device, dtype=torch.long)
-    mapping_matrix = mapping_matrix.to(device=device)
 
     with h5py.File(data_path, "r") as f:
         ds = f["X"][layer_name]
@@ -180,10 +149,10 @@ def scan_dataset_and_track_and_collect(data_path, layer_name, model,
         else:
             raise ValueError(f"Unsupported data shape: {tuple(ds.shape)}")
 
-        L1, L2 = int(alive_idx1.numel()), int(alive_idx2.numel())
+        L1 = int(alive_idx1.numel())
         activations_sae1 = torch.empty((N_images, L1), dtype=collect_dtype, device="cpu")
 
-        for img_start in tqdm(range(0, N_images, batch_images), desc="scan+collect"):
+        for img_start in tqdm(range(0, N_images, batch_images), desc="collect"):
             img_end = min(img_start + batch_images, N_images)
             cur_bs = img_end - img_start
 
@@ -201,47 +170,35 @@ def scan_dataset_and_track_and_collect(data_path, layer_name, model,
             # sae1.encode() with batch-top-k - chunk to avoid OOM on large d
             chunk_size = 4096  # tokens per chunk
             f1_alive_chunks = []
-            f2_alive_chunks = []
             for ci in range(0, x_flat.shape[0], chunk_size):
                 ce = min(ci + chunk_size, x_flat.shape[0])
                 f1_full_chunk = model.sae1.encode(x_flat[ci:ce], return_active=False, use_threshold=False)
-                f1_alive_chunk = f1_full_chunk[:, alive_idx1]
-                map_dev = mapping_matrix.to(dtype=f1_alive_chunk.dtype)
-                f2_alive_chunk = f1_alive_chunk @ map_dev
-                f1_alive_chunks.append(f1_alive_chunk)
-                f2_alive_chunks.append(f2_alive_chunk)
+                f1_alive_chunks.append(f1_full_chunk[:, alive_idx1])
                 del f1_full_chunk
             f1_alive_tok = torch.cat(f1_alive_chunks, dim=0)
-            f2_alive_tok = torch.cat(f2_alive_chunks, dim=0)
-            del f1_alive_chunks, f2_alive_chunks
+            del f1_alive_chunks
 
             # Pool tokens -> images
             if mode == "flat":
-                f1_batch, f2_batch = [], []
+                f1_batch = []
                 for i in range(cur_bs):
                     s, e = int(local_offsets[i]), int(local_offsets[i + 1])
                     if e > s:
                         f1_batch.append(f1_alive_tok[s:e].mean(dim=0))
-                        f2_batch.append(f2_alive_tok[s:e].mean(dim=0))
                     else:
                         f1_batch.append(torch.zeros((L1,), device=device))
-                        f2_batch.append(torch.zeros((L2,), device=device))
                 f1_batch = torch.stack(f1_batch)
-                f2_batch = torch.stack(f2_batch)
             else:
                 f1_batch = f1_alive_tok.view(cur_bs, T, L1).mean(dim=1)
-                f2_batch = f2_alive_tok.view(cur_bs, T, L2).mean(dim=1)
 
-            tracker1.update(f1_batch, img_start)
-            tracker2.update(f2_batch, img_start)
             activations_sae1[img_start:img_end].copy_(f1_batch.detach().to("cpu", dtype=collect_dtype))
 
     return activations_sae1
 
 # ============================================================
-# HMS Score (exact copy from notebook)
+# HMS Score
 # ============================================================
-def calculate_hms_score(tracker, mapping_matrix, alive_idx1, alive_idx2, embeddings, activations):
+def calculate_hms_score(mapping_matrix, alive_idx1, alive_idx2, embeddings, activations):
     l1_strength, l1_parents_idx = mapping_matrix.max(dim=1)
     l1_strength_np = l1_strength.cpu().numpy()
     l1_parents_idx_np = l1_parents_idx.cpu().numpy()
@@ -287,75 +244,94 @@ def calculate_hms_score(tracker, mapping_matrix, alive_idx1, alive_idx2, embeddi
     return hms_results
 
 # ============================================================
-# Main (exact notebook flow)
+# Main
 # ============================================================
-print(f"Loading model from {CKPT_PATH}...")
-model, trainer_cfg, meta, (k1, k2) = load_trained_twolevel_batchtopk(CKPT_PATH, device=DEVICE)
-print(f"Loaded TwoLevelBatchTopKSAE: k1={k1}, k2={k2}")
-
-print(f"\nLoading embeddings from {args.embedding_path}...")
-with h5py.File(args.embedding_path, 'r') as f:
-    if 'X' in f:
-        x = f['X']
-        if isinstance(x, h5py.Group):
-            key = list(x.keys())[0]
-            embeddings_all = torch.from_numpy(x[key][:]).float()
-        else:
-            embeddings_all = torch.from_numpy(x[:]).float()
-    else:
+def load_embeddings(path):
+    with h5py.File(path, "r") as f:
+        if "X" in f:
+            x = f["X"]
+            if isinstance(x, h5py.Group):
+                key = list(x.keys())[0]
+                return torch.from_numpy(x[key][:]).float()
+            return torch.from_numpy(x[:]).float()
         key = list(f.keys())[0]
-        embeddings_all = torch.from_numpy(f[key][:]).float()
-print(f"  Embeddings: {embeddings_all.shape}")
+        return torch.from_numpy(f[key][:]).float()
 
-print("\nStep A) Infer alive indices from dataset...")
-alive_idx1, alive_idx2 = infer_alive_indices_from_dataset(
-    data_path=DATA_PATH, layer_name=LAYER_NAME, model=model, device=DEVICE,
-    data_scale=DATA_SCALE, batch_images=BATCH_IMAGES_FOR_ALIVE,
-    chunk_tokens=CHUNK_TOKENS_FOR_ALIVE,
-    act_thr1=ACT_THR_L1, act_thr2=ACT_THR_L2,
-    topk1=TOPK_L1_FOR_ALIVE, topk2=TOPK_L2_FOR_ALIVE)
 
-print("\nStep B) Build L1->L2 map (post2 on SAE1 atoms)...")
-L1_to_L2_Map = compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device=DEVICE)
-print(f"Map shape: {tuple(L1_to_L2_Map.shape)}")
+def main():
+    parser = argparse.ArgumentParser(description="HMS evaluation for an SAE++ checkpoint.")
+    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--ckpt-path", required=True)
+    parser.add_argument("--data-path", required=True)
+    parser.add_argument("--embedding-path", required=True)
+    parser.add_argument("--layer-name", default="model.visual.blocks.23")
+    parser.add_argument("--method", default="SAE++", help="Label printed in the summary.")
+    args = parser.parse_args()
+    device = args.device
 
-print("\nStep C) Init trackers...")
-tracker1 = TopKTracker(TOP_K_IMAGES, alive_idx1.numel(), device=DEVICE)
-tracker2 = TopKTracker(TOP_K_IMAGES, alive_idx2.numel(), device=DEVICE)
+    print(f"Loading model from {args.ckpt_path}...")
+    model, trainer_cfg, meta, (k1, k2) = load_trained_twolevel_batchtopk(args.ckpt_path, device=device)
+    print(f"Loaded TwoLevelBatchTopKSAE: k1={k1}, k2={k2}")
 
-print("\nStep D) Scan + track...")
-activations_sae1 = scan_dataset_and_track_and_collect(
-    data_path=DATA_PATH, layer_name=LAYER_NAME, model=model,
-    alive_idx1=alive_idx1, alive_idx2=alive_idx2,
-    tracker1=tracker1, tracker2=tracker2, mapping_matrix=L1_to_L2_Map,
-    batch_images=SCAN_BATCH_IMAGES, device=DEVICE, data_scale=DATA_SCALE)
+    print(f"\nLoading embeddings from {args.embedding_path}...")
+    embeddings_all = load_embeddings(args.embedding_path)
+    print(f"  Embeddings: {embeddings_all.shape}")
 
-print("\nStep E) Compute HMS...")
-device_hms = DEVICE
-HMS = calculate_hms_score(tracker1, L1_to_L2_Map, alive_idx1, alive_idx2,
-                          embeddings_all.to(device_hms), activations_sae1.to(device_hms))
+    print("\nStep A) Infer alive indices from dataset...")
+    alive_idx1, alive_idx2 = infer_alive_indices_from_dataset(
+        data_path=args.data_path, layer_name=args.layer_name, model=model, device=device,
+        data_scale=DATA_SCALE, batch_images=BATCH_IMAGES_FOR_ALIVE,
+        chunk_tokens=CHUNK_TOKENS_FOR_ALIVE,
+        act_thr1=ACT_THR_L1, act_thr2=ACT_THR_L2,
+        topk1=TOPK_L1_FOR_ALIVE, topk2=TOPK_L2_FOR_ALIVE)
 
-hms_scores = [data['hms_score'] for data in HMS.values()]
-if hms_scores:
-    mean_hms = np.mean(hms_scores)
-    median_hms = np.median(hms_scores)
-    min_hms = np.min(hms_scores)
-    max_hms = np.max(hms_scores)
-else:
-    mean_hms = median_hms = min_hms = max_hms = 0.0
+    print("\nStep B) Build L1->L2 map (post2 on SAE1 atoms)...")
+    L1_to_L2_Map = compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device=device)
+    print(f"Map shape: {tuple(L1_to_L2_Map.shape)}")
 
-n_clusters = len(hms_scores)
-print(f"\n{'='*60}")
-print(f"HMS STATISTICS ({args.method})")
-print(f"-"*60)
-print(f"Alive L1:   {alive_idx1.numel()}")
-print(f"Alive L2:   {alive_idx2.numel()}")
-print(f"L2 Clusters (>=2 children): {n_clusters}")
-print(f"HMS_min:    {min_hms:.4f}")
-print(f"HMS_med:    {median_hms:.4f}")
-print(f"HMS_max:    {max_hms:.4f}")
-print(f"HMS_mean:   {mean_hms:.4f}")
-print(f"{'='*60}")
+    print("\nStep C) Collect per-image Level-1 activations...")
+    activations_sae1 = collect_image_activations(
+        data_path=args.data_path, layer_name=args.layer_name, model=model,
+        alive_idx1=alive_idx1, batch_images=SCAN_BATCH_IMAGES, device=device,
+        data_scale=DATA_SCALE)
 
-for l2_id, data in sorted(HMS.items()):
-    print(f"  Parent {l2_id:5d}: HMS={data['hms_score']:.4f}, Size={data['cluster_size']}, Children={data['child_ids']}")
+    # Prototypes weight embeddings by activations image-for-image, so the two
+    # files must cover the same images in the same order.
+    if activations_sae1.shape[0] != embeddings_all.shape[0]:
+        raise ValueError(
+            f"Image count mismatch: {activations_sae1.shape[0]} images in --data-path vs "
+            f"{embeddings_all.shape[0]} embeddings in --embedding-path. Regenerate both "
+            f"from the same --image-dir.")
+
+    print("\nStep D) Compute HMS...")
+    HMS = calculate_hms_score(L1_to_L2_Map, alive_idx1, alive_idx2,
+                              embeddings_all.to(device), activations_sae1.to(device))
+
+    hms_scores = [data['hms_score'] for data in HMS.values()]
+    if hms_scores:
+        mean_hms = np.mean(hms_scores)
+        median_hms = np.median(hms_scores)
+        min_hms = np.min(hms_scores)
+        max_hms = np.max(hms_scores)
+    else:
+        mean_hms = median_hms = min_hms = max_hms = 0.0
+
+    n_clusters = len(hms_scores)
+    print(f"\n{'='*60}")
+    print(f"HMS STATISTICS ({args.method})")
+    print(f"-"*60)
+    print(f"Alive L1:   {alive_idx1.numel()}")
+    print(f"Alive L2:   {alive_idx2.numel()}")
+    print(f"L2 Clusters (>=2 children): {n_clusters}")
+    print(f"HMS_min:    {min_hms:.4f}")
+    print(f"HMS_med:    {median_hms:.4f}")
+    print(f"HMS_max:    {max_hms:.4f}")
+    print(f"HMS_mean:   {mean_hms:.4f}")
+    print(f"{'='*60}")
+
+    for l2_id, data in sorted(HMS.items()):
+        print(f"  Parent {l2_id:5d}: HMS={data['hms_score']:.4f}, Size={data['cluster_size']}, Children={data['child_ids']}")
+
+
+if __name__ == "__main__":
+    main()

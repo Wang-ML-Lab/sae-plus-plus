@@ -26,3 +26,6 @@ venv/
 # Caches
 .hf_cache/
 .cache/
+
+# Paper PDF (link to arXiv instead)
+*.pdf

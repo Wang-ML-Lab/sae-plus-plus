@@ -1,5 +1,5 @@
-# Worked-example hyperparameters: CSAE on Qwen3-VL-4B-Instruct x ImageNet.
-# Reference record of the paper's main-result configuration for this setting.
+# Worked-example hyperparameters: SAE++ on Qwen3-VL-4B-Instruct x ImageNet.
+# Configuration of the released checkpoint (huggingface.co/YusongZhao666/csae-ckpt).
 # train_csae.py is CLI-driven; these are the worked-example values to pass.
 
 backbone:
@@ -9,7 +9,7 @@ backbone:
   prompt: "Describe the image content accurately."
   image_pixels: 65536                       # 256 x 256 (min == max)
 
-csae:
+saepp:
   dict_size: 20000        # Level-1 dictionary size (d)
   dict2_rule: half        # Level-2 size = max(256, d // 2) = 10000
   k1: 6                   # Level-1 BatchTopK target L0
@@ -19,7 +19,7 @@ csae:
 
 schedule:
   num_tokens: 500000000
-  sae_batch_size: 1024    # small batch => more gradient updates (~488k); matters for hierarchy quality
+  sae_batch_size: 1024    # 500M tokens / 1024 = 488,281 steps
   warmup_steps: 500
   decay_start_fraction: 0.8
   k_anneal_end_fraction: 0.1

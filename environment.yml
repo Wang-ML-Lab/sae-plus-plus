@@ -257,6 +257,7 @@ dependencies:
       - defusedxml==0.7.1
       - depyf==0.20.0
       - diffdist==0.1
+      - dictionary_learning @ git+https://github.com/saprmarks/dictionary_learning.git@60ec6bf5264944d64a4ca271f45a29ebfb9d4946
       - dill==0.4.0
       - diskcache==5.6.3
       - distlib==0.4.0

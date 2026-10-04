@@ -10,7 +10,8 @@ transformers>=4.57
 Pillow>=10.0
 
 # Generic SAE training harness (depend, don't vendor): dictionary_learning.training.trainSAE
-dictionary_learning @ git+https://github.com/saprmarks/dictionary_learning.git
+# Pinned: trainSAE's signature changes across upstream versions.
+dictionary_learning @ git+https://github.com/saprmarks/dictionary_learning.git@60ec6bf5264944d64a4ca271f45a29ebfb9d4946
 
 # Optional: experiment logging (enabled by train_csae.py --use_wandb)
 # wandb>=0.16

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Train a CSAE (cascaded two-level SAE) on streamed MLLM activations.
+Train SAE++ (cascaded two-level SAE) on streamed MLLM activations.
 
 Activations are read from an HDF5 file produced by `data_gen/extract_activations.py`
 (group "X", dataset keyed by `--layer_name`; 2D [tokens, dim] or 3D
@@ -203,7 +203,7 @@ class H5StreamingActivationLoader:
 
 # ------------------------------ CLI ------------------------------
 def get_args():
-    p = argparse.ArgumentParser(description="Train a cascaded SAE (CSAE).")
+    p = argparse.ArgumentParser(description="Train a cascaded SAE (SAE++).")
     # I/O
     p.add_argument("--save_dir", type=str, required=True)
     p.add_argument("--data_path", type=str, required=True)
@@ -211,25 +211,24 @@ def get_args():
     p.add_argument("--model_name", type=str, required=True, help="Backbone tag for bookkeeping, e.g. Qwen.")
     p.add_argument("--dataset_name", type=str, default="dataset", help="Dataset tag for bookkeeping.")
     p.add_argument("--device", type=str, default="cuda:0")
-    # CSAE architecture / sparsity
+    # SAE++ architecture / sparsity
     p.add_argument("--dict_size", type=int, default=20000, help="Level-1 dictionary size (d).")
     p.add_argument("--dict2_rule", type=str, default="half", choices=["half", "same"],
                    help="Level-2 size = d (same) or max(256, d//2) (half).")
-    p.add_argument("--k1", type=int, default=20, help="Level-1 BatchTopK target L0.")
-    p.add_argument("--k2", type=int, default=None, help="Level-2 target L0 (default: k2_rule).")
-    p.add_argument("--k2_rule", type=str, default="half", choices=["half", "same"],
-                   help="Default k2 = k1 (same) or max(1, k1//2) (half) when --k2 unset.")
+    # Defaults reproduce the released checkpoint (configs/qwen_imagenet.yaml).
+    p.add_argument("--k1", type=int, default=6, help="Level-1 BatchTopK target L0.")
+    p.add_argument("--k2", type=int, default=1, help="Level-2 BatchTopK target L0.")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=0)
     # Schedule (formerly demo_config constants)
     p.add_argument("--num_tokens", type=int, default=500_000_000)
-    p.add_argument("--warmup_steps", type=int, default=10)
+    p.add_argument("--warmup_steps", type=int, default=500)
     p.add_argument("--decay_start_fraction", type=float, default=0.8)
     p.add_argument("--k_anneal_end_fraction", type=float, default=0.1)
     p.add_argument("--sae2_start_step", type=int, default=10000,
                    help="Step at which the Level-2 SAE starts training (lets Level-1 stabilize first).")
     # Data loader
-    p.add_argument("--sae_batch_size", type=int, default=4096)
+    p.add_argument("--sae_batch_size", type=int, default=1024)
     p.add_argument("--images_per_read", type=int, default=None)
     p.add_argument("--block_rows", type=int, default=None)
     p.add_argument("--h5_cache_mb", type=int, default=512)
@@ -246,7 +245,7 @@ def build_trainer_config(activation_dim, steps, args, submodule_name):
     dict_size1 = int(args.dict_size)
     dict_size2 = dict_size1 if args.dict2_rule == "same" else max(256, dict_size1 // 2)
     k1 = int(args.k1)
-    k2 = int(args.k2) if args.k2 is not None else (k1 if args.k2_rule == "same" else max(1, k1 // 2))
+    k2 = int(args.k2)
     k_anneal = int(steps * args.k_anneal_end_fraction)
     decay_start = int(steps * args.decay_start_fraction)
     return {

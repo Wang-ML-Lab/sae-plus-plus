@@ -48,10 +48,14 @@ def main():
         batch_paths = image_paths[i:i + args.batch_size]
         images = []
         for p in batch_paths:
+            # Skip unreadable images, exactly as extract_activations.py does, so the
+            # embedding rows stay aligned image-for-image with the activations.
             try:
                 images.append(Image.open(p).convert("RGB"))
-            except Exception:
-                images.append(Image.new("RGB", (224, 224)))
+            except Exception as e:
+                print(f"Skip {p}: {e}")
+        if not images:
+            continue
 
         inputs = processor(images=images, return_tensors="pt").to(args.device)
         with torch.inference_mode():
