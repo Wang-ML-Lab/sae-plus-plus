@@ -29,8 +29,8 @@ Pipeline: get images → (1) generate activations → (2) train SAE++ →
 ## Installation
 
 ```bash
-git clone https://github.com/Zhao-YS/SAE-PlusPlus.git
-cd SAE-PlusPlus
+git clone https://github.com/Wang-ML-Lab/sae-plus-plus.git
+cd sae-plus-plus
 pip install -r requirements.txt      # or: conda env create -f environment.yml
 ```
 
@@ -190,7 +190,7 @@ paper's layer is listed for each backbone (hook paths as of transformers 4.57):
 ## Project Structure
 
 ```
-SAE-PlusPlus/
+sae-plus-plus/
 ├── csae/
 │   └── model.py                  # SAE++: BatchTopKSAE, TwoLevelBatchTopKSAE, TwoLevelBatchTopKTrainer
 ├── data_gen/
