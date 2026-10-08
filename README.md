@@ -9,7 +9,7 @@ This is the official implementation of the NeurIPS 2026 paper:
 
 **[SAE++: Cascaded Sparse Autoencoders Learn Multi-Level Visual Concepts in Multimodal LLMs](https://arxiv.org/abs/2606.16193)**
 
-Yusong Zhao, Hengyi Wang, Tanuja Ganu, Akshay Nambi, Hao Wang
+Yusong Zhao*, Hengyi Wang*, Tanuja Ganu, Akshay Nambi, Hao Wang
 
 ## Overview
 
@@ -129,7 +129,7 @@ python eval_hms.py \
 
 This prints HMS_min, HMS_med, HMS_max and HMS_mean over Level-2 parents with at
 least two Level-1 children (paper Sec. 5.1, App. E.5). The paper's main tables
-report HMS_mean and HMS_med.
+report HMS_mean and HMS_med. More details on the HMS metric are in the paper.
 
 ## Step 4. Steering
 
