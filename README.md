@@ -11,20 +11,67 @@ This is the official implementation of the NeurIPS 2026 paper:
 
 Yusong Zhao, Hengyi Wang, Tanuja Ganu, Akshay Nambi, Hao Wang
 
-## Overview
+## Outline for This README
+* [What SAE++ Does](#what-sae-does)
+* [Multi-Level Concepts](#multi-level-concepts)
+* [Concept Steering](#concept-steering)
+* [Installation](#installation) and [Datasets](#datasets)
+* Pipeline: [Step 1. Generate activations](#step-1-generate-activations--embeddings) →
+  [Step 2. Train](#step-2-train-sae) → [Step 3. Evaluate HMS](#step-3-evaluate-hms) →
+  [Step 4. Steering](#step-4-steering)
+* [Citation](#citation)
 
-**SAE++** (cascaded sparse autoencoders) discovers *multi-level* visual concepts in
-multimodal LLMs. A Level-1 SAE decomposes the MLLM's vision activations into
-atomic concepts — its decoder columns are the concept directions — and a Level-2
-SAE is trained **on the Level-1 decoder atoms themselves**, learning higher-order
-"concepts of concepts."
+## What SAE++ Does
+Sparse autoencoders (SAEs) decompose an MLLM's dense activations into sparse,
+interpretable features, but they usually learn a **flat** dictionary. SAE++ learns
+**multi-level** visual concepts: a Level-1 SAE learns fine-grained concepts from the
+MLLM's activations, and a Level-2 SAE is trained **directly on the Level-1 decoder
+weights** (each decoder column is one Level-1 concept direction). Level-2 therefore
+learns "concepts of concepts", and both levels are trained jointly, end to end.
 
-- **Hierarchical** — Level-2 units group semantically coherent Level-1 atoms.
-- **End-to-end** — both levels are trained jointly.
-- **Steerable** — clamping a Level-2 unit causally inserts or suppresses its concept in the MLLM.
+The figure compares hierarchical SAE designs:
+* **(a) Matryoshka SAEs** build the hierarchy from one nested prefix chain, so early
+  directions are reused by every later level, and errors in them propagate.
+* **(b) Stacked SAEs** re-compress the Level-1 sparse codes through a smaller
+  bottleneck, which loses capacity.
+* **(c) SAE++** feeds the learned Level-1 weights, not the sparse codes, to Level-2.
 
-Pipeline: get images → (1) generate activations → (2) train SAE++ →
-(3) evaluate HMS → (4) steer concepts. A CUDA GPU is required.
+<p align="center">
+<img src="fig/fig1_overview.png" alt="Hierarchical SAE designs: Matryoshka, stacked, and SAE++" width="95%"/>
+</p>
+
+## Multi-Level Concepts
+SAE++ groups related Level-1 concepts under a coherent Level-2 concept, e.g.
+*Truck* and *Jeep* under *Vehicle*, and *Pinwheels* and *Waterwheels* under
+*Rotating Structures*. The matched Matryoshka SAE (MSAE) concepts are less
+consistent and often mix unrelated visual patterns. Each row shows the top
+activating images of one Level-1 concept.
+
+<p align="center">
+<img src="fig/fig2_concepts.png" alt="Level-1 and Level-2 concepts from SAE++ and Matryoshka SAEs" width="95%"/>
+</p>
+
+Across Qwen3-VL, Gemma-3 and LLaVA on four datasets, SAE++ achieves the best
+Hierarchical Mono-Semanticity (HMS, the coherence of Level-1 concepts under each
+Level-2 parent) in every setting. See the paper for the full tables.
+
+## Concept Steering
+Because a Level-2 concept groups related Level-1 concepts, clamping all of them
+together steers the MLLM's output at the concept level. Below, steering the
+SAE++ Level-2 concept *Table* inserts or removes "table" from Qwen3-VL's caption,
+while steering a single Level-1 concept or matched MSAE concepts does not.
+
+<p align="center">
+<img src="fig/fig3_steering.png" alt="Concept insertion and suppression with SAE++ versus baselines" width="95%"/>
+</p>
+
+On 1,000 COCO evaluations judged by four LLMs, SAE++ steering succeeds in 71.0% of
+insertions and 40.1% of suppressions on average, versus 59.9% / 34.1% for the best
+single Level-1 concept and 40.9% / 23.6% for matched MSAE clusters.
+
+The rest of this README walks through the pipeline: get images → (1) generate
+activations → (2) train SAE++ → (3) evaluate HMS → (4) steer concepts. A CUDA GPU
+is required.
 
 ## Installation
 
@@ -201,6 +248,7 @@ sae-plus-plus/
 ├── steering/
 │   ├── core.py                   # cluster discovery, per-cluster scale (sigma_A), ClampHook
 │   └── run_demo.py               # steer one Level-2 unit; print baseline vs steered captions
+├── fig/                          # figures from the paper used in this README
 ├── configs/
 │   └── qwen_imagenet.yaml        # worked-example hyperparameters
 ├── requirements.txt
