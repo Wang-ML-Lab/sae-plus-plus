@@ -19,7 +19,7 @@ Example (Qwen3-VL-4B x ImageNet):
         --layer_name model.visual.blocks.23 --device cuda:0 \
         --dict_size 20000 --k1 6 --k2 1 \
         --lr 1e-4 --seed 0 --num_tokens 500000000 \
-        --sae_batch_size 1024 --warmup_steps 500 --sae2_start_step 10000
+        --sae_batch_size 256 --warmup_steps 100 --sae2_start_step 10000
 """
 
 import os
@@ -201,6 +201,54 @@ class H5StreamingActivationLoader:
         return batch.to(device=self.device, dtype=self.dtype, non_blocking=True)
 
 
+class InMemoryActivationLoader:
+    """Loads a 2D [tokens, dim] dataset into memory (GPU if it fits, else host RAM) and
+    yields batches sampled uniformly at random without replacement (a seeded permutation
+    per epoch). This is how the released checkpoint was trained."""
+
+    def __init__(self, h5_path: str, layer_name: str, batch_size: int, device: str, seed: int = 0,
+                 gpu_headroom_gb: float = 16.0):
+        with h5py.File(h5_path, "r") as f:
+            d = f["X"][layer_name]
+            if d.ndim != 2:
+                raise ValueError("InMemoryActivationLoader supports 2D [tokens, dim] datasets only")
+            n, dim = d.shape
+            nbytes = 4 * n * dim
+            store = "cpu"
+            if str(device).startswith("cuda"):
+                free, _ = t.cuda.mem_get_info(t.device(device))
+                if free >= nbytes + gpu_headroom_gb * 2**30:
+                    store = device
+            print(f"Loading {n} x {dim} activations ({nbytes / 2**30:.1f} GiB) into "
+                  f"{'GPU' if store != 'cpu' else 'host'} memory")
+            self.data = t.empty((n, dim), dtype=t.float32, device=store)
+            step = 1 << 20
+            for a in range(0, n, step):
+                self.data[a:a + step] = t.from_numpy(d[a:min(n, a + step)].astype(np.float32)).to(store)
+        self.n, self.batch_size, self.device = int(n), int(batch_size), device
+        self.on_device = store != "cpu"
+        self.gen = t.Generator(device=device); self.gen.manual_seed(int(seed))
+        self._new_epoch()
+
+    def _new_epoch(self):
+        self.perm = t.randperm(self.n, device=self.device, generator=self.gen)
+        self.pos = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.pos + self.batch_size > self.n:
+            self._new_epoch()
+        idx = self.perm[self.pos:self.pos + self.batch_size]
+        self.pos += self.batch_size
+        if self.on_device:
+            return self.data[idx]
+        return self.data[idx.cpu()].to(self.device, non_blocking=True)
+
+    def close(self):
+        self.data = None
+
 # ------------------------------ CLI ------------------------------
 def get_args():
     p = argparse.ArgumentParser(description="Train a cascaded SAE (SAE++).")
@@ -222,13 +270,13 @@ def get_args():
     p.add_argument("--seed", type=int, default=0)
     # Schedule (formerly demo_config constants)
     p.add_argument("--num_tokens", type=int, default=500_000_000)
-    p.add_argument("--warmup_steps", type=int, default=500)
+    p.add_argument("--warmup_steps", type=int, default=100)
     p.add_argument("--decay_start_fraction", type=float, default=0.8)
-    p.add_argument("--k_anneal_end_fraction", type=float, default=0.1)
+    p.add_argument("--k_anneal_end_fraction", type=float, default=0.01)
     p.add_argument("--sae2_start_step", type=int, default=10000,
                    help="Step at which the Level-2 SAE starts training (lets Level-1 stabilize first).")
     # Data loader
-    p.add_argument("--sae_batch_size", type=int, default=1024)
+    p.add_argument("--sae_batch_size", type=int, default=256)
     p.add_argument("--images_per_read", type=int, default=None)
     p.add_argument("--block_rows", type=int, default=None)
     p.add_argument("--h5_cache_mb", type=int, default=512)
@@ -270,6 +318,7 @@ def build_trainer_config(activation_dim, steps, args, submodule_name):
         "threshold_start_step1": 1000,
         "threshold_start_step2": 1000,
         "sae2_start_step": int(args.sae2_start_step),
+        "sae2_min_alive": 64,
         "k1_anneal_steps": k_anneal,
         "k2_anneal_steps": k_anneal,
     }
@@ -285,25 +334,30 @@ def main():
             raise KeyError("HDF5 file missing group 'X'.")
         dset = f["X"][args.layer_name]
         activation_dim = int(dset.shape[-1])
+        ndim = int(dset.ndim)
         print(f"HDF5 dataset shape: {tuple(dset.shape)}  activation_dim={activation_dim}")
 
     steps = int(args.num_tokens / args.sae_batch_size)
     print(f"Total training steps: {steps}")
 
-    data_iter = H5StreamingActivationLoader(
-        h5_path=args.data_path,
-        layer_name=args.layer_name,
-        batch_size=int(args.sae_batch_size),
-        device=args.device,
-        dtype=t.float32,
-        seed=int(args.seed),
-        images_per_read=args.images_per_read,
-        block_rows=args.block_rows,
-        h5_rdcc_nbytes=int(args.h5_cache_mb) * 1024 * 1024,
-        h5_rdcc_nslots=1_000_003,
-        pin_memory=True,
-        token_filter=args.token_filter,
-    )
+    if ndim == 2:
+        data_iter = InMemoryActivationLoader(args.data_path, args.layer_name, int(args.sae_batch_size),
+                                             args.device, seed=int(args.seed))
+    else:
+        data_iter = H5StreamingActivationLoader(
+            h5_path=args.data_path,
+            layer_name=args.layer_name,
+            batch_size=int(args.sae_batch_size),
+            device=args.device,
+            dtype=t.float32,
+            seed=int(args.seed),
+            images_per_read=args.images_per_read,
+            block_rows=args.block_rows,
+            h5_rdcc_nbytes=int(args.h5_cache_mb) * 1024 * 1024,
+            h5_rdcc_nslots=1_000_003,
+            pin_memory=True,
+            token_filter=args.token_filter,
+        )
 
     submodule_name = f"{args.dataset_name}_{args.model_name}_layer_{args.layer_name.replace('.', '_')}"
     save_dir_layer = os.path.join(args.save_dir, submodule_name)

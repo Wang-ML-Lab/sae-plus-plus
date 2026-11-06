@@ -152,13 +152,13 @@ python train_csae.py \
   --layer_name model.visual.blocks.23 --device "$DEVICE" \
   --dict_size 20000 --k1 6 --k2 1 \
   --lr 1e-4 --seed 0 \
-  --num_tokens 500000000 --sae_batch_size 1024 \
-  --warmup_steps 500 --sae2_start_step 10000
+  --num_tokens 500000000 --sae_batch_size 256 \
+  --warmup_steps 100 --sae2_start_step 10000
 ```
 
 These are the settings of the released checkpoint (see below), and they are also
 `train_csae.py`'s defaults: dictionary sizes n1 = 20,000 and n2 = 10,000, TopK
-sparsities k1 = 6 and k2 = 1, Adam with learning rate 1e-4, and batches of 1,024
+sparsities k1 = 6 and k2 = 1, Adam with learning rate 1e-4, and batches of 256
 activation tokens for about 500M tokens. `--sae2_start_step` lets Level-1
 stabilize before Level-2 starts. See `configs/qwen_imagenet.yaml` for the full list.
 
@@ -204,20 +204,20 @@ python steering/run_demo.py --ckpt-path "$CKPT" \
 it instead of rescanning the activations. Unit ids below refer to the released
 checkpoint.
 
-**Bald eagle — unit #7452:**
+**King penguin — unit #2920:**
 
 ```bash
 python steering/run_demo.py --ckpt-path "$CKPT" \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
-  --device "$DEVICE" --cluster-cache ./results/imagenet_clusters.pt --cluster 7452
+  --device "$DEVICE" --cluster-cache ./results/imagenet_clusters.pt --cluster 2920
 ```
 
-**Schooner — unit #7806:**
+**Banjo — unit #7798:**
 
 ```bash
 python steering/run_demo.py --ckpt-path "$CKPT" \
   --data-path ./data/imagenet_val_acts.h5 --image-dir "$VAL_IMAGES" \
-  --device "$DEVICE" --cluster-cache ./results/imagenet_clusters.pt --cluster 7806
+  --device "$DEVICE" --cluster-cache ./results/imagenet_clusters.pt --cluster 7798
 ```
 
 ## Supported Backbones

@@ -22,10 +22,9 @@ from csae.model import TwoLevelBatchTopKSAE
 # ============================================================
 # Evaluation constants
 # ============================================================
+s = 0.5  # a Level-1 activation counts only if > s * (learned threshold)
 DATA_SCALE = 1.0
-ACT_THR_L1 = 1e-3
 ACT_THR_L2 = 1e-3
-TOPK_L1_FOR_ALIVE = 12
 TOPK_L2_FOR_ALIVE = 1
 BATCH_IMAGES_FOR_ALIVE = 128
 CHUNK_TOKENS_FOR_ALIVE = 8192
@@ -61,13 +60,13 @@ def _post_relu(sae, x):
     return F.relu(sae.encoder(x - sae.b_dec))
 
 @torch.no_grad()
-def infer_alive_indices_from_dataset(data_path, layer_name, model, device,
+def infer_alive_indices_from_dataset(data_path, layer_name, model, device, cut,
     data_scale=1.0, batch_images=256, chunk_tokens=4096,
-    act_thr1=1e-3, act_thr2=1e-3, topk1=20, topk2=20):
+    act_thr2=1e-3, topk2=20):
     model = model.to(device).eval()
     sae1, sae2 = model.sae1, model.sae2
     H1, H2 = int(sae1.dict_size), int(sae2.dict_size)
-    topk1, topk2 = min(int(topk1), H1), min(int(topk2), H2)
+    topk2 = min(int(topk2), H2)
     freq1 = torch.zeros((H1,), dtype=torch.long, device="cpu")
     freq2 = torch.zeros((H2,), dtype=torch.long, device="cpu")
 
@@ -93,10 +92,7 @@ def infer_alive_indices_from_dataset(data_path, layer_name, model, device,
                 x_flat = x_flat / data_scale
             for x_chunk in x_flat.split(chunk_tokens, dim=0):
                 post1 = _post_relu(sae1, x_chunk)
-                v1, i1 = torch.topk(post1, k=topk1, dim=1, largest=True, sorted=False)
-                m1 = v1 > act_thr1
-                if m1.any():
-                    freq1 += torch.bincount(i1[m1].detach().cpu(), minlength=H1)
+                freq1 += (post1 > cut).sum(dim=0).cpu()
 
     alive_idx1 = (freq1 > 0).nonzero(as_tuple=False).flatten().to(device=device, dtype=torch.long)
 
@@ -131,7 +127,7 @@ def compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device):
 # Scan + collect
 # ============================================================
 @torch.no_grad()
-def collect_image_activations(data_path, layer_name, model, alive_idx1,
+def collect_image_activations(data_path, layer_name, model, alive_idx1, cut,
     batch_images=256, device="cuda", data_scale=1.0, collect_dtype=torch.float16):
     """Mean-pool alive Level-1 codes over each image's tokens -> [N_images, L1]."""
     model = model.to(device).eval()
@@ -172,7 +168,8 @@ def collect_image_activations(data_path, layer_name, model, alive_idx1,
             f1_alive_chunks = []
             for ci in range(0, x_flat.shape[0], chunk_size):
                 ce = min(ci + chunk_size, x_flat.shape[0])
-                f1_full_chunk = model.sae1.encode(x_flat[ci:ce], return_active=False, use_threshold=False)
+                post1 = _post_relu(model.sae1, x_flat[ci:ce])
+                f1_full_chunk = post1 * (post1 > cut)
                 f1_alive_chunks.append(f1_full_chunk[:, alive_idx1])
                 del f1_full_chunk
             f1_alive_tok = torch.cat(f1_alive_chunks, dim=0)
@@ -272,6 +269,7 @@ def main():
     print(f"Loading model from {args.ckpt_path}...")
     model, trainer_cfg, meta, (k1, k2) = load_trained_twolevel_batchtopk(args.ckpt_path, device=device)
     print(f"Loaded TwoLevelBatchTopKSAE: k1={k1}, k2={k2}")
+    cut = s * float(model.sae1.threshold.item())
 
     print(f"\nLoading embeddings from {args.embedding_path}...")
     embeddings_all = load_embeddings(args.embedding_path)
@@ -279,11 +277,10 @@ def main():
 
     print("\nStep A) Infer alive indices from dataset...")
     alive_idx1, alive_idx2 = infer_alive_indices_from_dataset(
-        data_path=args.data_path, layer_name=args.layer_name, model=model, device=device,
+        data_path=args.data_path, layer_name=args.layer_name, model=model, device=device, cut=cut,
         data_scale=DATA_SCALE, batch_images=BATCH_IMAGES_FOR_ALIVE,
         chunk_tokens=CHUNK_TOKENS_FOR_ALIVE,
-        act_thr1=ACT_THR_L1, act_thr2=ACT_THR_L2,
-        topk1=TOPK_L1_FOR_ALIVE, topk2=TOPK_L2_FOR_ALIVE)
+        act_thr2=ACT_THR_L2, topk2=TOPK_L2_FOR_ALIVE)
 
     print("\nStep B) Build L1->L2 map (post2 on SAE1 atoms)...")
     L1_to_L2_Map = compute_L1_to_L2_map_post2(model, alive_idx1, alive_idx2, device=device)
@@ -292,7 +289,7 @@ def main():
     print("\nStep C) Collect per-image Level-1 activations...")
     activations_sae1 = collect_image_activations(
         data_path=args.data_path, layer_name=args.layer_name, model=model,
-        alive_idx1=alive_idx1, batch_images=SCAN_BATCH_IMAGES, device=device,
+        alive_idx1=alive_idx1, cut=cut, batch_images=SCAN_BATCH_IMAGES, device=device,
         data_scale=DATA_SCALE)
 
     # Prototypes weight embeddings by activations image-for-image, so the two

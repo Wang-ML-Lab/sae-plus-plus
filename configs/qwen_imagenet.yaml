@@ -19,14 +19,14 @@ saepp:
 
 schedule:
   num_tokens: 500000000
-  sae_batch_size: 1024    # 500M tokens / 1024 = 488,281 steps
-  warmup_steps: 500
+  sae_batch_size: 256     # 500M tokens / 256 = 1,953,125 steps
+  warmup_steps: 100
   decay_start_fraction: 0.8
-  k_anneal_end_fraction: 0.1
+  k_anneal_end_fraction: 0.01
   sae2_start_step: 10000  # let Level-1 stabilize before Level-2 starts
 
 eval:
   reference_embeddings: DINOv3 (facebook/dinov3-vit7b16-pretrain-lvd1689m)
-  k1_cooccur: 12
+  act_threshold_scale: 0.5  # Level-1 activation counts only if > 0.5 * learned threshold
   k2_cooccur: 1
   min_children_per_parent: 2

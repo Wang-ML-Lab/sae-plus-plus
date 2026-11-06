@@ -45,7 +45,7 @@ def find_h5_dataset(f, layer_name):
 
 
 @torch.no_grad()
-def discover_clusters(sae, data_path, layer_name, device, topk_l1=20, act_thr=1e-3,
+def discover_clusters(sae, data_path, layer_name, device, act_thr=1e-3,
                       cache_path=None):
     """Group alive Level-1 atoms by their Level-2 parent (argmax of sae2 on the
     decoder atoms). Returns (alive_idx1, cluster_dict, img_cluster_acts, N_img)
@@ -67,16 +67,14 @@ def discover_clusters(sae, data_path, layer_name, device, topk_l1=20, act_thr=1e
         freq1 = torch.zeros(H1, device=device)
         for start in range(0, N_tok, 4096):
             x = torch.tensor(ds[start:start + 4096], device=device, dtype=torch.float32)
-            post = F.relu(sae1.encoder(x - sae1.b_dec))
-            vals, idxs = post.topk(topk_l1, dim=-1)
-            freq1 += torch.bincount(idxs[vals > act_thr], minlength=H1)
+            freq1 += (sae1.encode(x, use_threshold=True) > 0).sum(dim=0)
 
     alive_idx1 = (freq1 > 0).nonzero(as_tuple=False).flatten()
     atoms = sae1.decoder.weight[:, alive_idx1].T
     post2 = F.relu(sae2.encoder(atoms - sae2.b_dec))
     alive_mask2 = post2.max(dim=0).values > act_thr
     alive_idx2 = alive_mask2.nonzero(as_tuple=False).flatten()
-    parent_map = post2[:, alive_idx2].argmax(dim=-1)
+    parent_map = alive_idx2[post2[:, alive_idx2].argmax(dim=-1)]
 
     cluster_dict = {}
     for l1_pos in range(len(alive_idx1)):
@@ -94,8 +92,7 @@ def discover_clusters(sae, data_path, layer_name, device, topk_l1=20, act_thr=1e
                 x = torch.tensor(ds[s:e], device=device, dtype=torch.float32)
             else:
                 x = torch.tensor(ds[img_i:img_i + 1], device=device, dtype=torch.float32)
-            post = F.relu(sae1.encoder(x - sae1.b_dec))
-            f1 = post[:, alive_idx1].mean(dim=0)
+            f1 = sae1.encode(x, use_threshold=True)[:, alive_idx1].mean(dim=0)
             for l2, positions in cluster_dict.items():
                 img_cluster_acts[l2][img_i] = f1[positions].sum().item()
 
@@ -110,9 +107,9 @@ def discover_clusters(sae, data_path, layer_name, device, topk_l1=20, act_thr=1e
 def cluster_sigma(sae, data_path, layer_name, device, l1_abs_indices, top_img_idxs):
     """Per-token activation scale of the cluster's atoms on its top images.
     Clamping overrides per-token codes, so sigma is measured per-token (not
-    pooled), as the mean of activations that survive the learned threshold."""
+    pooled), as the mean of the nonzero sparse codes of those atoms."""
     sae1 = sae.sae1
-    thr = max(float(sae1.threshold.item()), 1.0)
+    thr = float(sae1.threshold.item())
     with h5py.File(data_path, "r") as f:
         ds = find_h5_dataset(f, layer_name)
         offsets = f["token_offsets"][:] if "token_offsets" in f else None
@@ -123,16 +120,16 @@ def cluster_sigma(sae, data_path, layer_name, device, l1_abs_indices, top_img_id
                 x = torch.tensor(ds[s:e], device=device, dtype=torch.float32)
             else:
                 x = torch.tensor(ds[img_i:img_i + 1], device=device, dtype=torch.float32)
-            post = F.relu(sae1.encoder(x - sae1.b_dec))[:, l1_abs_indices]
-            pos = post[post > thr * 0.5]
-            if pos.numel() > 0:
-                vals.append(pos.mean().item())
-    return float(np.mean(vals)) if vals else thr
+            codes = sae1.encode(x, use_threshold=True)[:, l1_abs_indices]
+            vals.append(codes[codes > 0])
+    vals = torch.cat(vals)
+    return float(vals.mean().item()) if vals.numel() > 0 else thr
 
 
 class ClampHook:
-    """Set the post-ReLU code of the target atoms to fixed values at every token
-    position, then decode through the SAE's sparse path. clamps = [(atom_idx, value), ...]."""
+    """Set the sparse Level-1 code of the target atoms to fixed values at every
+    token position and add the change through the decoder, x + W_dec (f' - f), so
+    the SAE reconstruction error is kept. clamps = [(atom_idx, value), ...]."""
 
     def __init__(self, sae1, clamps):
         self.sae1 = sae1
@@ -145,9 +142,10 @@ class ClampHook:
         x = outputs[0] if was_tuple else outputs
         shape, dtype, dev = x.shape, x.dtype, x.device
         x_flat = x.float().reshape(-1, shape[-1])
-        post = F.relu(self.sae1.encoder(x_flat - self.sae1.b_dec))
-        post[:, self.target.to(dev)] = self.values.to(dev)
-        x_mod = (self.sae1.decoder(post) + self.sae1.b_dec).reshape(shape).to(dtype)
+        f = self.sae1.encode(x_flat, use_threshold=True)
+        tgt = self.target.to(dev)
+        delta = (self.values.to(dev).unsqueeze(0) - f[:, tgt]) @ self.sae1.decoder.weight[:, tgt].T
+        x_mod = (x_flat + delta).reshape(shape).to(dtype)
         return (x_mod,) + outputs[1:] if was_tuple else x_mod
 
     def attach(self, module):

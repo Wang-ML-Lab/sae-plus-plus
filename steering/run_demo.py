@@ -14,7 +14,7 @@ HDF5 (same sorted order as data_gen/extract_activations.py).
 Example:
     python steering/run_demo.py --ckpt-path ./runs/imagenet/.../ae.pt \
         --data-path ./data/imagenet_val_acts.h5 \
-        --image-dir /path/to/imagenet/val --device cuda:0 --cluster 7452
+        --image-dir /path/to/imagenet/val --device cuda:0 --cluster 2920
 """
 import argparse, os, sys
 import numpy as np

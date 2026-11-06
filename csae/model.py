@@ -298,6 +298,15 @@ class TwoLevelBatchTopKTrainer(SAETrainer):
 
         self.device = device if device is not None else ("cuda" if t.cuda.is_available() else "cpu")
 
+        # AuxK dead-latent revival (Gao et al., 2024), as in the original training code:
+        # latents that have not fired for `dead_feature_threshold` inputs reconstruct the
+        # residual through an auxiliary top-(d/2) loss weighted by auxk_alpha{1,2}.
+        self.dead_feature_threshold = 10_000_000
+        self.top_k_aux1 = self.activation_dim // 2
+        self.top_k_aux2 = self.activation_dim // 2
+        self.num_tokens_since_fired1 = t.zeros(self.dict_size1, dtype=t.long, device=self.device)
+        self.num_tokens_since_fired2 = t.zeros(self.dict_size2, dtype=t.long, device=self.device)
+
         self.ae = TwoLevelBatchTopKSAE(
             activation_dim=self.activation_dim,
             dict_size1=self.dict_size1,
@@ -342,6 +351,22 @@ class TwoLevelBatchTopKTrainer(SAETrainer):
         lr_fn = get_lr_schedule(self.steps, self.warmup_steps, decay_start=self.decay_start)
         self.scheduler = t.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lr_fn)
 
+    def _aux_k_loss(self, sae: BatchTopKSAE, residual_BD: t.Tensor, post_relu_BF: t.Tensor,
+                    num_tokens_since_fired: t.Tensor, top_k_aux: int) -> t.Tensor:
+        """Normalized AuxK loss: dead latents' top-k_aux pre-activations reconstruct the residual."""
+        dead = num_tokens_since_fired >= self.dead_feature_threshold
+        if dead.sum() == 0:
+            return t.tensor(0.0, device=residual_BD.device, dtype=residual_BD.dtype)
+        k_aux = int(min(top_k_aux, int(dead.sum().item())))
+        aux_latents = t.where(dead[None], post_relu_BF, -t.inf)
+        aux_vals, aux_idx = aux_latents.topk(k_aux, sorted=False)
+        aux_f = t.zeros_like(post_relu_BF).scatter_(dim=-1, index=aux_idx, src=aux_vals)
+        x_aux = sae.decoder(aux_f)  # no bias
+        l2 = (residual_BD.float() - x_aux.float()).pow(2).sum(dim=-1).mean()
+        mu = residual_BD.mean(dim=0, keepdim=True).expand_as(residual_BD)
+        denom = (residual_BD.float() - mu.float()).pow(2).sum(dim=-1).mean()
+        return (l2 / denom).nan_to_num(0.0)
+
     @staticmethod
     def _update_threshold(sae: BatchTopKSAE, f: t.Tensor, beta: float):
         device_type = "cuda" if f.is_cuda else "cpu"
@@ -381,13 +406,21 @@ class TwoLevelBatchTopKTrainer(SAETrainer):
         x = x.to(self.device)
 
         # ---- SAE1 (on activations) ----
-        f1, active1_F, _ = self.ae.sae1.encode(x, return_active=True, use_threshold=False)
+        f1, active1_F, post1 = self.ae.sae1.encode(x, return_active=True, use_threshold=False)
         self.ae.set_live1(active1_F)
         self.alive1 = int(self.ae.live_n1.item())
         if step > self.threshold_start_step1:
             self._update_threshold(self.ae.sae1, f1, self.threshold_beta)
         x_hat1 = self.ae.sae1.decode(f1)
-        loss1 = (x - x_hat1).pow(2).sum(dim=-1).mean()
+        e1 = x - x_hat1
+        l2_1 = e1.pow(2).sum(dim=-1).mean()
+        if not logging:  # firing statistics are updated on training steps only
+            with t.no_grad():
+                self.num_tokens_since_fired1 += x.size(0)
+                self.num_tokens_since_fired1[active1_F] = 0
+        aux_1 = (self._aux_k_loss(self.ae.sae1, e1.detach(), post1, self.num_tokens_since_fired1, self.top_k_aux1)
+                 if self.auxk_alpha1 > 0 else t.tensor(0.0, device=self.device, dtype=x.dtype))
+        loss1 = l2_1 + self.auxk_alpha1 * aux_1
 
         # ---- SAE2 (on Level-1 decoder atoms, scheduled) ----
         self.do_sae2 = int(
@@ -398,14 +431,21 @@ class TwoLevelBatchTopKTrainer(SAETrainer):
         loss2 = t.tensor(0.0, device=self.device, dtype=x.dtype)
         if self.do_sae2:
             M = self._sae2_training_matrix_no_sg()
-            f2, active2_F, _ = self.ae.sae2.encode(M, return_active=True, use_threshold=False)
+            f2, active2_F, post2 = self.ae.sae2.encode(M, return_active=True, use_threshold=False)
             self.ae.set_live2(active2_F)
             self.alive2 = int(self.ae.live_n2.item())
             if step > self.threshold_start_step2:
                 self._update_threshold(self.ae.sae2, f2, self.threshold_beta)
             M_hat = self.ae.sae2.decode(f2)
-            l2_2 = (M - M_hat).pow(2).sum(dim=-1).mean()
-            loss2 = l2_2
+            e2 = M - M_hat
+            l2_2 = e2.pow(2).sum(dim=-1).mean()
+            if not logging:
+                with t.no_grad():
+                    self.num_tokens_since_fired2 += M.size(0)
+                    self.num_tokens_since_fired2[active2_F] = 0
+            aux_2 = (self._aux_k_loss(self.ae.sae2, e2.detach(), post2, self.num_tokens_since_fired2, self.top_k_aux2)
+                     if self.auxk_alpha2 > 0 else t.tensor(0.0, device=self.device, dtype=x.dtype))
+            loss2 = l2_2 + self.auxk_alpha2 * aux_2
         else:
             self.ae.clear_live2()
             self.alive2 = 0
